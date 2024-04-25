@@ -8,6 +8,8 @@
 // Declaración del prototipo de la función taskUART
 void taskUART(void *pvParameters);
 static void taskBlink(void *args __attribute__((unused)));
+void taskAperiodic(void *args __attribute__((unused)));
+void taskPeriodic(void *args __attribute__((unused)));
 
 static void blink_setup(void) {
     // Enable clock for GPIO channel C
@@ -53,7 +55,6 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask __attribute__((unused)),
 /* Task that sends characters through UART */
 void taskUART(void *pvParameters) {
     char *message = (char *)pvParameters;
-    
     while(*message) {
         usart_send_blocking(USART1, *message);
         message++;
@@ -64,11 +65,27 @@ void taskUART(void *pvParameters) {
 
 /* Task that toggles PC13, which is the LED */
 static void taskBlink(void *args __attribute__((unused))) {
+    char *taskName = "taskBlink is running\n";
     for (;;) {
 		gpio_toggle(GPIOC, GPIO13);
-        taskUART("Fausti puto\n");
-		vTaskDelay(pdMS_TO_TICKS(500));
+        taskAperiodic(NULL);
+		vTaskDelay(pdMS_TO_TICKS(5000));
 	}
+}
+
+void taskAperiodic(void *args __attribute__((unused))) {
+    char *taskName = "taskAperiodic is running\n";
+    taskUART(taskName);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    return;
+}
+
+void taskPeriodic(void *args __attribute__((unused))) {
+    char *taskName = "taskPeriodic is running\n";
+    for (;;) {
+        taskUART(taskName);
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
 }
 
 /* Main loop, this is where our program starts */
@@ -79,8 +96,9 @@ int main(void) {
     uart_setup();
     blink_setup();
     
-    // Crear tarea para parpadear el LED
-	xTaskCreate(taskBlink, "LED", 100, NULL, 2, NULL);
+    
+	xTaskCreate(taskBlink, "LED", 100, NULL, 2, NULL);  // Crear tarea para parpadear el LED
+    xTaskCreate(taskPeriodic, "Periodic", 100, NULL, 2, NULL);  // Crear tarea Periódica
 
     // Start RTOS Task scheduler
 	vTaskStartScheduler();

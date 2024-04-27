@@ -4,17 +4,17 @@
 #include "blink.h"
 #include "timers.h"
 #include <stdio.h>
+#include "semphr.h"
 
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
 
-
 // Declaración del prototipo de la función taskUART
 static TaskHandle_t blink_handle;
 static TimerHandle_t auto_reload_timer;
 static void taskPeriodic(void *pvParameters);
-void autoReloadCallback(TimerHandle_t xTimer);
+static void autoReloadCallback(TimerHandle_t xTimer);
 
 /* Handler in case our application overflows the stack */
 void vApplicationStackOverflowHook(TaskHandle_t xTask __attribute__((unused)), char *pcTaskName __attribute__((unused))) {
@@ -34,14 +34,29 @@ static void taskPeriodic(void *pvParameters) {
             vTaskSuspend(xHandle);
             i = 0;
         }
-        UART_puts(taskName);
+        if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
+            UART_puts(taskName);
+            xSemaphoreGive(uart_mutex);
+        }
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
 
-void autoReloadCallback(TimerHandle_t xTimer) {
+static void autoReloadCallback(TimerHandle_t xTimer) {
     char *autoReloadMessage = "Timer expired, auto-reloading\n";
-    UART_puts(autoReloadMessage);
+    if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
+        UART_puts(autoReloadMessage);
+        xSemaphoreGive(uart_mutex);
+    }
+
+    char message[50];
+    int expire_time = xTimerGetExpiryTime(xTimer) - xTaskGetTickCount();
+    sprintf(message, "Timer will expire again in %d ms\n", expire_time);
+    
+    if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
+        UART_puts(message);
+        xSemaphoreGive(uart_mutex);
+    }
 }
 
 /* Main loop, this is where our program starts */
@@ -56,6 +71,8 @@ int main(void) {
     xTaskCreate(taskUART, "UART", 100, NULL, 2, NULL);  // Crear tarea para UART
     
     auto_reload_timer = xTimerCreate("AutoReload", pdMS_TO_TICKS(5000), pdTRUE, (void *) 0, autoReloadCallback);
+
+    // Revisar que el UART no manda nada hasta que el Scheduler no funcione
     if (auto_reload_timer == NULL) {
         UART_puts("Timer creation failed\n");
     } else {
@@ -63,7 +80,6 @@ int main(void) {
             UART_puts("Timer start failed\n");
         }
     }
-
     // Start RTOS Task scheduler
 	vTaskStartScheduler();
 

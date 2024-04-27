@@ -1,8 +1,13 @@
 #include "FreeRTOS.h"
 #include "uart.h"
+#include <stdio.h>
 
 static QueueHandle_t uart_txq; // TX queue for UART
 static QueueHandle_t uart_rxq; // RX queue for UART
+
+SemaphoreHandle_t uart_mutex;
+
+char *message1 = "Recibiendo por RX\n";
 
 void UART_setup(void) {
     rcc_periph_clock_enable(RCC_GPIOA);
@@ -16,9 +21,9 @@ void UART_setup(void) {
 
     gpio_set_mode(GPIO_BANK_USART1_RX, 
         GPIO_MODE_INPUT, 
-        GPIO_CNF_OUTPUT_ALTFN_OPENDRAIN, 
+        GPIO_CNF_INPUT_FLOAT, 
         GPIO_USART1_RX);
-    
+
     usart_set_mode(USART1,USART_MODE_TX_RX);
     usart_set_parity(USART1,USART_PARITY_NONE);
     usart_set_baudrate(USART1,115200);
@@ -35,6 +40,17 @@ void UART_setup(void) {
 
     // Create a queue for data to transmit from UART
     uart_txq = xQueueCreate(256,sizeof(char));
+    uart_rxq = xQueueCreate(256,sizeof(char));
+
+    // Create a mutex for UART
+    uart_mutex = xSemaphoreCreateBinary();
+    if(uart_mutex == NULL) {
+        UART_puts("ERROR SEMAFOROOOO\n");
+    }
+    else {
+        UART_puts("ANDUVO\n");
+    }
+    xSemaphoreGive(uart_mutex);
 }
 
 void taskUART(void *args __attribute__((unused))) {
@@ -46,30 +62,42 @@ void taskUART(void *args __attribute__((unused))) {
                 taskYIELD(); // Yield until ready
             usart_send_blocking(USART1,ch);
         }
+
+        // Esperar a que haya datos en la cola RXQ
+        /*
+        uint16_t data;
+        char message[7];
+        if (xQueueReceive(uart_rxq, &data, portMAX_DELAY) == pdTRUE) {
+            // Hacer algo con los datos recibidos, como enviarlos a través de USART nuevamente
+            sprintf(message, "%u\n", data);
+            if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
+                UART_puts(message);
+                xSemaphoreGive(uart_mutex);
+            }
+        }
+        */
     }
 }
+
 
 void UART_puts(const char *s) {
     for ( ; *s; ++s ) {
         // blocks when queue is full
         if(xQueueSend(uart_txq, s, portMAX_DELAY) != pdTRUE) {
+            xQueueReset(uart_txq);
             return; // Queue full
         }
     }
 }
 
 void usart1_isr() {
-    char test3[3] = "GHI";
-    usart_send_blocking(USART1,test3[0]);
-    usart_send_blocking(USART1,test3[1]);
-    usart_send_blocking(USART1,test3[2]);
-    if (usart_get_flag(USART1,USART_SR_RXNE)) {
-        char ch = usart_recv(USART1);
-        usart_send_blocking(USART1,ch);
-        // Send char to RX queue
-        //xQueueSendFromISR(uart_rxq, &ch, NULL);
+    /*
+    
+    */
+    if (usart_get_flag(USART1, USART_SR_RXNE)) {
+        uint16_t data = usart_recv(USART1);  // Leer el byte recibido
+        if(xQueueSendToBackFromISR(uart_rxq, &data, NULL) != pdTRUE) { // Encolar el byte en RXQ
+            xQueueReset(uart_rxq);
+        } 
     }
-    usart_send_blocking(USART1,test3[0]);
-    usart_send_blocking(USART1,test3[0]);
-    usart_send_blocking(USART1,test3[0]);
 }

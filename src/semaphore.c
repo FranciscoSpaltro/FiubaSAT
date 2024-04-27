@@ -24,7 +24,7 @@ static SemaphoreHandle_t bin_sem;     // Waits for parameter to be read
 static SemaphoreHandle_t mutex;       // Lock access to Serial resource
 static QueueHandle_t msg_queue;       // Send data from producer to consumer
 
-//*****************************************************************************
+//----------------------------------------------------------------------------------
 // Tasks
 
 // Producer: write a given number of times to shared buffer
@@ -63,7 +63,7 @@ void consumer(void *parameters) {
   }
 }
 
-//*****************************************************************************
+//----------------------------------------------------------------------------------
 // Main (runs as its own task with priority 1 on core 1)
 
 void setup() {

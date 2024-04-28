@@ -7,8 +7,6 @@ static QueueHandle_t uart_rxq; // RX queue for UART
 
 SemaphoreHandle_t uart_mutex;
 
-char *message1 = "Recibiendo por RX\n";
-
 void UART_setup(void) {
     rcc_periph_clock_enable(RCC_GPIOA);
     rcc_periph_clock_enable(RCC_USART1);
@@ -45,10 +43,10 @@ void UART_setup(void) {
     // Create a mutex for UART
     uart_mutex = xSemaphoreCreateBinary();
     if(uart_mutex == NULL) {
-        UART_puts("ERROR SEMAFOROOOO\n");
+        UART_puts("Error al crear mutex\n");
     }
     else {
-        UART_puts("ANDUVO\n");
+        UART_puts("Se creó el mutex\n");
     }
     xSemaphoreGive(uart_mutex);
 }
@@ -57,28 +55,36 @@ void taskUART(void *args __attribute__((unused))) {
     char ch;
     for (;;) {
         // Receive char to be TX
-        if (xQueueReceive(uart_txq, &ch, 500) == pdPASS) {
+        while (xQueueReceive(uart_txq, &ch, pdMS_TO_TICKS(500)) == pdPASS && ch != '\0') {
             while (!usart_get_flag(USART1,USART_SR_TXE) )
                 taskYIELD(); // Yield until ready
             usart_send_blocking(USART1,ch);
         }
+    
+        UART_puts("Paso a recibir\n");
 
         // Esperar a que haya datos en la cola RXQ
-        /*
-        uint16_t data;
-        char message[7];
-        if (xQueueReceive(uart_rxq, &data, portMAX_DELAY) == pdTRUE) {
+        uint8_t data;
+        char message[50];
+        int contador = 0;
+        while (xQueueReceive(uart_rxq, &data, pdMS_TO_TICKS(500)) == pdPASS  && data != '\0') {
             // Hacer algo con los datos recibidos, como enviarlos a través de USART nuevamente
-            sprintf(message, "%u\n", data);
-            if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
-                UART_puts(message);
-                xSemaphoreGive(uart_mutex);
+            message[contador] = data;
+            contador++;
+            if (contador == 49) {
+                message[contador-1] = '\n';
+                message[contador] = '\0';
+                break;
             }
         }
-        */
+        message[contador] = '\0';
+        if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
+            UART_puts(message);
+            xSemaphoreGive(uart_mutex);
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
-
 
 void UART_puts(const char *s) {
     for ( ; *s; ++s ) {
@@ -91,11 +97,8 @@ void UART_puts(const char *s) {
 }
 
 void usart1_isr() {
-    /*
-    
-    */
     if (usart_get_flag(USART1, USART_SR_RXNE)) {
-        uint16_t data = usart_recv(USART1);  // Leer el byte recibido
+        uint8_t data = usart_recv_blocking(USART1);  // Leer el byte recibido
         if(xQueueSendToBackFromISR(uart_rxq, &data, NULL) != pdTRUE) { // Encolar el byte en RXQ
             xQueueReset(uart_rxq);
         } 

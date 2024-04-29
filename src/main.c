@@ -24,7 +24,7 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask __attribute__((unused)), c
 
 static void taskPeriodic(void *pvParameters) {
     TaskHandle_t xHandle = (TaskHandle_t) pvParameters;
-    char *taskName = "taskPeriodic is running\n";
+    char *taskName = "taskPeriodic is running\r\n";
     int i = 0;
     for (;;) {
         if (i == 0) {
@@ -43,7 +43,7 @@ static void taskPeriodic(void *pvParameters) {
 }
 
 static void autoReloadCallback(TimerHandle_t xTimer) {
-    char *autoReloadMessage = "Timer expired, auto-reloading\n";
+    char *autoReloadMessage = "Timer expired, auto-reloading\r\n";
     if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
         UART_puts(autoReloadMessage);
         xSemaphoreGive(uart_mutex);
@@ -51,7 +51,7 @@ static void autoReloadCallback(TimerHandle_t xTimer) {
 
     char message[50];
     int expire_time = xTimerGetExpiryTime(xTimer) - xTaskGetTickCount();
-    sprintf(message, "Timer will expire again in %d ms\n", expire_time);
+    sprintf(message, "Timer will expire again in %d ms\r\n", expire_time);
     
     if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
         UART_puts(message);

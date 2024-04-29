@@ -61,26 +61,29 @@ void taskUART(void *args __attribute__((unused))) {
             usart_send_blocking(USART1,ch);
         }
     
-        UART_puts("Paso a recibir\n");
-
         // Esperar a que haya datos en la cola RXQ
         uint8_t data;
-        char message[50];
+        char message[50] = "";
         int contador = 0;
-        while (xQueueReceive(uart_rxq, &data, pdMS_TO_TICKS(500)) == pdPASS  && data != '\0') {
+        while (xQueueReceive(uart_rxq, &data, pdMS_TO_TICKS(500)) == pdPASS) {
             // Hacer algo con los datos recibidos, como enviarlos a través de USART nuevamente
             message[contador] = data;
             contador++;
             if (contador == 49) {
                 message[contador-1] = '\n';
-                message[contador] = '\0';
-                break;
+                message[contador] = '\r';
+                if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
+                    UART_puts(message);
+                    xSemaphoreGive(uart_mutex);
+                }
             }
-        }
-        message[contador] = '\0';
-        if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
-            UART_puts(message);
-            xSemaphoreGive(uart_mutex);
+            if (data == '\r') {
+                message[contador] = '\n';
+                if(xSemaphoreTake(uart_mutex, portMAX_DELAY) == pdTRUE) {
+                    UART_puts(message);
+                    xSemaphoreGive(uart_mutex);
+                }
+            }
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
@@ -97,7 +100,7 @@ void UART_puts(const char *s) {
 }
 
 void usart1_isr() {
-    if (usart_get_flag(USART1, USART_SR_RXNE)) {
+    while (usart_get_flag(USART1, USART_SR_RXNE)) {
         uint8_t data = usart_recv_blocking(USART1);  // Leer el byte recibido
         if(xQueueSendToBackFromISR(uart_rxq, &data, NULL) != pdTRUE) { // Encolar el byte en RXQ
             xQueueReset(uart_rxq);

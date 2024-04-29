@@ -2,10 +2,9 @@
 #include "blink.h"
 
 void taskBlink(void *args __attribute__((unused))) {
-    char *taskName = "taskBlink is running\n";
+    char *taskName = "taskBlink is running\r\n";
     for (;;) {
         gpio_toggle(GPIOC, GPIO13);
-        UART_puts(taskName);
 		vTaskDelay(pdMS_TO_TICKS(1000));
 	}
 }

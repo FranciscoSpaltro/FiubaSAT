@@ -24,6 +24,8 @@
         "*.macasm": "hlasm",
         "*.bms": "hlasm",
         "gpio.h": "c",
-        "usart.h": "c"
+        "usart.h": "c",
+        "rcc.h": "c",
+        "semphr.h": "c"
     }
 }

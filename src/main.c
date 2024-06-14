@@ -70,23 +70,10 @@ int main(void) {
 
     blink_setup();
 	xTaskCreate(taskBlink, "LED", 100, NULL, 2, &blink_handle);  // Crear tarea para parpadear el LED
-    xTaskCreate(taskPeriodic, "Periodic", 100, (void *)blink_handle, 2, NULL);  // Crear tarea Periódica
+   
     xTaskCreate(taskUART1_transmit, "UART1_transmit", 100, NULL, 2, NULL);  // Crear tarea para UART_transmit
     xTaskCreate(taskUART1_receive, "UART1_receive", 100, NULL, 2, NULL);  // Crear tarea para UART_receive
-    
-    xTaskCreate(taskUART2_transmit, "UART2_transmit", 100, NULL, 2, NULL);  // Crear tarea para UART_transmit
-    xTaskCreate(taskUART2_receive, "UART2_receive", 100, NULL, 2, NULL);  // Crear tarea para UART_receive
 
-    auto_reload_timer = xTimerCreate("AutoReload", pdMS_TO_TICKS(5000), pdTRUE, (void *) 0, autoReloadCallback);
-
-    // Revisar que el UART no manda nada hasta que el Scheduler no funcione
-    if (auto_reload_timer == NULL) {
-        UART1_puts("Timer creation failed\n");
-    } else {
-        if (xTimerStart(auto_reload_timer, 0) != pdPASS) {
-            UART1_puts("Timer start failed\n");
-        }
-    }
     // Start RTOS Task scheduler
 	vTaskStartScheduler();
 

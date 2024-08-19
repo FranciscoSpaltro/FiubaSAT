@@ -26,6 +26,7 @@
         "gpio.h": "c",
         "usart.h": "c",
         "rcc.h": "c",
-        "semphr.h": "c"
+        "semphr.h": "c",
+        "nvic.h": "c"
     }
 }

@@ -13,9 +13,12 @@
 
 extern SemaphoreHandle_t uart1_mutex; // Mutex for UART
 
-uint16_t UART1_puts(const char *s);
-void UART1_setup(void);
 void taskUART1_transmit(void *args __attribute__((unused)));
 void taskUART1_receive(void *args __attribute__((unused)));
+
+uint16_t UART1_puts(const char *s);
+int UART1_receive(void);
+void UART1_putchar(char ch);
+void UART1_setup(void);
 
 #endif /* ifndef UART1_H */

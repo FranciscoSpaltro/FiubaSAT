@@ -4,6 +4,9 @@
 
 #define SIZE_BUFFER_USART 256
 
+char buffer_uart1[SIZE_BUFFER_USART];
+int i_uart1 = 0;
+
 static QueueHandle_t uart1_txq; // TX queue for UART
 static QueueHandle_t uart1_rxq; // RX queue for UART
 
@@ -65,7 +68,6 @@ void taskUART1_transmit(void *args __attribute__((unused))) {
     }
 }
 
-
 void taskUART1_receive(void *args __attribute__((unused))) {
     int data;
     for(;;) {
@@ -77,7 +79,6 @@ void taskUART1_receive(void *args __attribute__((unused))) {
     }
 }
 
-
 int UART1_receive() {
     int data;
     if (xQueueReceive(uart1_rxq, &data, pdMS_TO_TICKS(500)) == pdPASS) {
@@ -86,10 +87,14 @@ int UART1_receive() {
     return -1;
 }
 
-
 static void UART1_process_data(uint8_t data) {
     UART1_putchar(data);
-    UART2_putchar(data);
+    buffer_uart1[i_uart1] = data;
+    i_uart1++;
+}
+
+char *UART1_get_buffer(void) {
+    return buffer_uart1;
 }
 
 uint16_t UART1_puts(const char *s) {

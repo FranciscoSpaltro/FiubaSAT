@@ -6,7 +6,6 @@
 #include <queue.h>
 #include "semphr.h"
 
-
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
@@ -19,6 +18,7 @@ void taskUART2_receive(void *args __attribute__((unused)));
 
 char *UART2_get_buffer(void);
 uint16_t UART2_puts(const char *s);
+int UART2_receive(void);
 void UART2_putchar(char ch);
 void UART2_setup(void);
 

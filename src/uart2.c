@@ -4,11 +4,11 @@
 
 #define SIZE_BUFFER_USART 256
 
+char buffer_uart2[SIZE_BUFFER_USART];
+int i_uart2 = 0;
+
 static QueueHandle_t uart2_txq; // TX queue for UART
 static QueueHandle_t uart2_rxq; // RX queue for UART
-
-char buffer[128];
-int i = 0;
 
 SemaphoreHandle_t uart2_mutex;
 
@@ -69,23 +69,32 @@ void taskUART2_transmit(void *args __attribute__((unused))) {
 }
 
 void taskUART2_receive(void *args __attribute__((unused))) {
-    uint8_t data;
+    int data;
     for(;;) {
-        while (xQueueReceive(uart2_rxq, &data, pdMS_TO_TICKS(500)) == pdPASS) {
+        data = UART2_receive();
+        if (data != -1) {
             UART2_process_data(data);
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
+int UART2_receive() {
+    int data;
+    if (xQueueReceive(uart2_rxq, &data, pdMS_TO_TICKS(500)) == pdPASS) {
+        return data;
+    }
+    return -1;
+}
+
 static void UART2_process_data(uint8_t data) {
-    UART1_putchar(data);
-    buffer[i] = data;
-    i++;
+    /*UART2_putchar(data);*/
+    buffer_uart2[i_uart2] = data;
+    i_uart2++;
 }
 
 char *UART2_get_buffer(void) {
-    return buffer;
+    return buffer_uart2;
 }
 
 uint16_t UART2_puts(const char *s) {

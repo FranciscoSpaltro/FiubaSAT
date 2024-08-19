@@ -71,12 +71,6 @@ void taskUART1_receive(void *args __attribute__((unused))) {
     for(;;) {
         while (xQueueReceive(uart1_rxq, &data, pdMS_TO_TICKS(500)) == pdPASS) {
             xQueueSend(uart1_txq, &data, portMAX_DELAY);
-            UART1_putchar(data);
-            if (data == '\r') {        // Esto es para el Putty
-                data = '\n';
-                xQueueSend(uart1_txq, &data, portMAX_DELAY);
-                UART1_putchar(data);
-            }
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }

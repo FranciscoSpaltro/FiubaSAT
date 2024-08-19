@@ -71,9 +71,11 @@ void taskUART2_receive(void *args __attribute__((unused))) {
     for(;;) {
         while (xQueueReceive(uart2_rxq, &data, pdMS_TO_TICKS(500)) == pdPASS) {
             xQueueSend(uart2_txq, &data, portMAX_DELAY);
+            usart_send_blocking(USART1,data);
             if (data == '\r') {        // Esto es para el Putty
                 data = '\n';
                 xQueueSend(uart2_txq, &data, portMAX_DELAY);
+                usart_send_blocking(USART1,data);
             }
         }
         vTaskDelay(pdMS_TO_TICKS(50));

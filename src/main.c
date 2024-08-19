@@ -74,6 +74,9 @@ int main(void) {
     xTaskCreate(taskUART1_transmit, "UART1_transmit", 100, NULL, 2, NULL);  // Crear tarea para UART_transmit
     xTaskCreate(taskUART1_receive, "UART1_receive", 100, NULL, 2, NULL);  // Crear tarea para UART_receive
 
+    xTaskCreate(taskUART2_transmit, "UART2_transmit", 100, NULL, 2, NULL);  // Crear tarea para UART_transmit
+    xTaskCreate(taskUART2_receive, "UART2_receive", 100, NULL, 2, NULL);  // Crear tarea para UART_receive
+
     // Start RTOS Task scheduler
 	vTaskStartScheduler();
 

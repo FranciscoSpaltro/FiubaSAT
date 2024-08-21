@@ -60,7 +60,8 @@ El uso de Docker en este proyecto podría fundamentarse utilizando tres aspectos
 #### Hasta acá la guía. De ahora en más, detallo cómo continué:
 
 8. Instalar git
-    En la terminal de VSC: `apt install git`
+
+    En la terminal de VSC: `apt-get update && apt-get install -y git`
 
 9. Clonar el repositorio FIUBASAT
 

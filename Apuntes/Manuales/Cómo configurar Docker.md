@@ -1,7 +1,3 @@
-# VSC + Docker + PlatformIO + STM32
-En base a [este artículo](https://www.linkedin.com/pulse/utilizing-docker-visual-studio-code-platformio-dev-container-padhya/)
----
-
 ### 1. Por qué utilizar Docker
 
 Docker es una plataforma que permite crear, desplegar y gestionar aplicaciones dentro de contenedores, entornos ligeros y portátiles que agrupan lo necesario para ejecutar una aplicación, incluyendo el código, las dependencias, las bibliotecas y las configuraciones del sistema operativo.
@@ -19,8 +15,24 @@ El uso de Docker en este proyecto podría fundamentarse utilizando tres aspectos
     - Docker tiene la capacidad de capturar un "snapshot" del entorno de desarrollo, incluyendo todas las dependencias, configuraciones y herramientas necesarias para que una aplicación funcione correctamente. Se empaqueta el sistema operativo base, las bibliotecas, frameworks y herramientas, las variables de entorno, archivos de configuración y cualquier otro ajuste necesario. Esto beneficia la reproducibilidad, es decir, la posibilidad de recrear el entorno original aun con el paso del tiempo y las actualizaciones que surjan en ese período
     - Actua como un complemento a la documentación del proyecto
 
+---
 
-### 2. Preparación del entorno
+# UTILIZANDO DOCKERFILE
+
+1. Iniciar sesión en Docker Hub
+2. Crear un repositorio y nombrarlo <nombre-de-usuario>/nombre-de-repo
+3. Escribir el archivo Dockerfile
+4. Iniciar sesión en Docker Hub desde Docker Desktop o la terminal
+5. Construir la imagen Docker ejecutando `docker build -t <nombre-de-usuario>/nombre-de-repo`
+6. Para testear localmente la imagen Docker, ejecutar `docker run <nombre-de-usuario>/nombre-de-repo`
+7. Pushear la imagen Docker a Docker Hub ejecutando `docker push <nombre-de-usuario>/nombre-de-repo`
+
+
+---
+# VSC + Docker + PlatformIO + STM32
+En base a [este artículo](https://www.linkedin.com/pulse/utilizing-docker-visual-studio-code-platformio-dev-container-padhya/)
+
+### Preparación del entorno
 
 1. Instalar Docker ([link](https://docs.docker.com/desktop/install/windows-install/))
     Para este manual, se instaló la versión 4.32.0

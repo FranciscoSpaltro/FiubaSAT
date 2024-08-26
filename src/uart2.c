@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define SIZE_BUFFER 16  // Define el tamaño del buffer
+#define SIZE_BUFFER 256  // Define el tamaño del buffer
 
 static uint16_t buffer[SIZE_BUFFER];
 static uint16_t head = 0;  // Índice de escritura
@@ -24,7 +24,7 @@ void UART2_setup(void) {
     // Habilitar el clock para USART2
     rcc_periph_clock_enable(RCC_USART2);
 
-    // Configurar los pines de UART1 (PA2 TX y PA3 RX)
+    // Configurar los pines de UART2 (PA2 TX y PA3 RX)
     // gpio_set_mode(puerto GPIO afectado, input/output y velocidad de cambio, modo de salida, pin afectado)
     gpio_set_mode(GPIO_BANK_USART2_TX, 
         GPIO_MODE_OUTPUT_50_MHZ, 
@@ -56,7 +56,7 @@ void UART2_setup(void) {
     uart2_txq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
     uart2_rxq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
 
-    // Crear un mutex binario para garantizar que solo una tarea a la vez acceda a la UART1
+    // Crear un mutex binario para garantizar que solo una tarea a la vez acceda a la UART2
     uart2_mutex = xSemaphoreCreateBinary();
     if(uart2_mutex == NULL) {
         UART2_puts("Error al crear mutex\n");
@@ -68,7 +68,7 @@ void UART2_setup(void) {
 void taskUART2_transmit(void *args __attribute__((unused))) {
     uint16_t ch;
     for (;;) {
-        // xQueueReceive: recibe un elemento de la cola uart1_txq: si existe, se almacena en ch y devuelve pdPASS; si no, devuelve pdFALSE. El tercer parámetro indica la cantidad máxima de tiempo que la tarea debe bloquear la espera de recibir un elemento si la cola está vacía en el momento de la llamada.
+        // xQueueReceive: recibe un elemento de la cola uart2_txq: si existe, se almacena en ch y devuelve pdPASS; si no, devuelve pdFALSE. El tercer parámetro indica la cantidad máxima de tiempo que la tarea debe bloquear la espera de recibir un elemento si la cola está vacía en el momento de la llamada.
         while (xQueueReceive(uart2_txq, &ch, pdMS_TO_TICKS(500)) == pdPASS) {
             // Verifica si el registro de transmisión está vacío: si no, se bloquea hasta que esté vacío
             while (!usart_get_flag(USART2,USART_SR_TXE) )
@@ -103,7 +103,7 @@ int UART2_receive() {
 // UART2_PROCESS_DATA
 // Envia un byte de datos a través de UART2 y lo almacena en el buffer
 static void UART2_process_data(uint16_t data) {
-    //UART2_putchar(data);
+    //UART3_putchar(data);
     buffer_write(data);
 }
 
@@ -115,7 +115,7 @@ uint16_t UART2_puts(const char *s) {
     uint16_t nsent = 0;
     // Recorre el string s hasta encontrar el caracter nulo
     for ( ; *s; s++) {
-        // Añade el caracter a la cola uart1_txq. portMAX_DELAY indica que la tarea se bloqueará indefinidamente si la cola está llena
+        // Añade el caracter a la cola uart2_txq. portMAX_DELAY indica que la tarea se bloqueará indefinidamente si la cola está llena
         if(xQueueSend(uart2_txq, s, portMAX_DELAY) != pdTRUE) {
             // Si falla, se resetea la cola y se devuelve la cantidad de caracteres enviados
             xQueueReset(uart2_txq);
@@ -176,11 +176,11 @@ static void buffer_write(uint16_t data) {
 
 void UART2_print_buffer(void) {
     uint16_t i = tail;
-    UART1_puts("Contenido del buffer:\r\n");
+    UART3_puts("Contenido del buffer 2:\r\n");
 
     // Si el buffer no está lleno, imprimir desde tail hasta head
     while (i != head || (i == head && buffer_full)) {
-        UART1_putchar(buffer[i]);
+        UART3_putchar(buffer[i]);
         i = (i + 1) % SIZE_BUFFER;
 
         // Si el buffer estaba lleno, necesitamos asegurarnos de que
@@ -190,6 +190,6 @@ void UART2_print_buffer(void) {
             break;
         }
     }
-    UART1_putchar('\r');
-    UART1_putchar('\n');
+    UART3_putchar('\r');
+    UART3_putchar('\n');
 }

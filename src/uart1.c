@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define SIZE_BUFFER 16  // Define el tamaño del buffer
+#define SIZE_BUFFER 256  // Define el tamaño del buffer
 
 static uint16_t buffer[SIZE_BUFFER];
 static uint16_t head = 0;  // Índice de escritura
@@ -103,7 +103,7 @@ int UART1_receive() {
 // UART1_PROCESS_DATA
 // Envia un byte de datos a través de UART1 y lo almacena en el buffer
 static void UART1_process_data(uint16_t data) {
-    UART2_putchar(data);
+    //UART3_putchar(data);
     buffer_write(data);
 }
 
@@ -176,11 +176,11 @@ static void buffer_write(uint16_t data) {
 
 void UART1_print_buffer(void) {
     uint16_t i = tail;
-    UART2_puts("Contenido del buffer:\r\n");
+    UART3_puts("Contenido del buffer 1:\r\n");
 
     // Si el buffer no está lleno, imprimir desde tail hasta head
     while (i != head || (i == head && buffer_full)) {
-        UART2_putchar(buffer[i]);
+        UART3_putchar(buffer[i]);
         i = (i + 1) % SIZE_BUFFER;
 
         // Si el buffer estaba lleno, necesitamos asegurarnos de que
@@ -190,6 +190,6 @@ void UART1_print_buffer(void) {
             break;
         }
     }
-    UART2_putchar('\r');
-    UART2_putchar('\n');
+    UART3_putchar('\r');
+    UART3_putchar('\n');
 }

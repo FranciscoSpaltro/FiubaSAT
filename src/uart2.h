@@ -3,6 +3,7 @@
 
 #include "task.h"
 #include "uart1.h"
+#include "uart3.h"
 #include <queue.h>
 #include "semphr.h"
 

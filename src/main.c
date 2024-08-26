@@ -2,6 +2,7 @@
 #include "task.h"
 #include "uart1.h"
 #include "uart2.h"
+#include "uart3.h"
 #include "blink.h"
 #include "timers.h"
 #include <stdio.h>
@@ -72,6 +73,7 @@ int main(void) {
 
     UART1_setup();
     UART2_setup();
+    UART3_setup();
     blink_setup();
     //InitLogFile();
 
@@ -83,6 +85,9 @@ int main(void) {
     
     xTaskCreate(taskUART2_transmit, "UART2_transmit", 100, NULL, 2, NULL);  // Crear tarea para UART_transmit
     xTaskCreate(taskUART2_receive, "UART2_receive", 100, NULL, 2, NULL);  // Crear tarea para UART_receive
+
+    xTaskCreate(taskUART3_transmit, "UART3_transmit", 100, NULL, 2, NULL);  // Crear tarea para UART_transmit
+    xTaskCreate(taskUART3_receive, "UART3_receive", 100, NULL, 2, NULL);  // Crear tarea para UART_receive
 
     xTaskCreate(taskTest, "Test", 100, NULL, 2, NULL);  // Crear tarea para Test
     xTaskCreate(taskPrintBuffer, "Print_buffer", 100, NULL, 2, NULL);  // Crear tarea para Test

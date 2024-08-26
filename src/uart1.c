@@ -57,7 +57,6 @@ void UART1_setup(void) {
     if(uart1_mutex == NULL) {
         UART1_puts("Error al crear mutex\n");
     }
-
     // Inicializar el mutex en estado disponible
     xSemaphoreGive(uart1_mutex);
 }
@@ -77,7 +76,6 @@ void taskUART1_transmit(void *args __attribute__((unused))) {
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
-
 
 void taskUART1_receive(void *args __attribute__((unused))) {
     int data;

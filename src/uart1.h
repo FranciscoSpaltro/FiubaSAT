@@ -25,7 +25,7 @@ void taskUART1_receive(void *args __attribute__((unused)));
 
 // UART1_GET_BUFFER
 // Devuelve el buffer de recepción de UART1
-char *UART1_get_buffer(void);
+uint16_t *UART1_get_buffer(void);
 
 // UART1_PUTS
 // Encola un string en uart1_txq, bloqueando la tarea si la cola está llena
@@ -37,10 +37,14 @@ int UART1_receive(void);
 
 // UART1_PUTCHAR
 // Encola el dato en uart1_txq, bloqueando la tarea si la cola está llena
-void UART1_putchar(char ch);
+void UART1_putchar(uint16_t ch);
 
 // UART1_SETUP
 // Configura el periférico USART1
 void UART1_setup(void);
+
+bool UART1_buffer_read(uint16_t *data);
+
+void UART1_print_buffer(void);
 
 #endif /* ifndef UART1_H */

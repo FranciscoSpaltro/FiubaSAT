@@ -41,4 +41,11 @@ void taskTest(void *args __attribute__((unused))){
     vTaskDelete(NULL);
 }
 
+void taskPrintBuffer(void *args __attribute__((unused))) {
+    for (;;) {
+        UART1_print_buffer();
+        UART2_print_buffer();
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+}
 

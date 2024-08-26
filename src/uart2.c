@@ -1,18 +1,22 @@
 #include "FreeRTOS.h"
 #include "uart2.h"
-#include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 
-#define SIZE_BUFFER_USART 256
+#define SIZE_BUFFER 8  // Define el tamaño del buffer
 
-char buffer_uart2[SIZE_BUFFER_USART];
-int i_uart2 = 0;
+static uint16_t buffer[SIZE_BUFFER];
+static uint16_t head = 0;  // Índice de escritura
+static uint16_t tail = 0;  // Índice de lectura
+static bool buffer_full = false;  // Indica si el buffer está lleno
 
 static QueueHandle_t uart2_txq; // TX queue for UART
 static QueueHandle_t uart2_rxq; // RX queue for UART
 
 SemaphoreHandle_t uart2_mutex;
 
-static void UART2_process_data(uint8_t data);
+static void UART2_process_data(uint16_t data);
+static void buffer_write(uint16_t data);
 
 void UART2_setup(void) {
     // Habilitar el clock para GPIOA (donde están conectados los pines TX y RX de UART2)
@@ -48,9 +52,9 @@ void UART2_setup(void) {
     // Habilitar la interrupción de UART2 en el NVIC (a nivel sistema para que el controlador de interrupciones pueda manejarla)
     nvic_enable_irq(NVIC_USART2_IRQ);
 
-    // Crear dos colas para los datos de TX y RX, de tamaño SIZE_BUFFER_USART * sizeof(uint8_t) bytes
-    uart2_txq = xQueueCreate(SIZE_BUFFER_USART, sizeof(uint8_t));
-    uart2_rxq = xQueueCreate(SIZE_BUFFER_USART, sizeof(uint8_t));
+    // Crear dos colas para los datos de TX y RX, de tamaño SIZE_BUFFER_USART * sizeof(uint16_t) bytes
+    uart2_txq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
+    uart2_rxq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
 
     // Crear un mutex binario para garantizar que solo una tarea a la vez acceda a la UART1
     uart2_mutex = xSemaphoreCreateBinary();
@@ -62,7 +66,7 @@ void UART2_setup(void) {
 }
 
 void taskUART2_transmit(void *args __attribute__((unused))) {
-    uint8_t ch;
+    uint16_t ch;
     for (;;) {
         // xQueueReceive: recibe un elemento de la cola uart1_txq: si existe, se almacena en ch y devuelve pdPASS; si no, devuelve pdFALSE. El tercer parámetro indica la cantidad máxima de tiempo que la tarea debe bloquear la espera de recibir un elemento si la cola está vacía en el momento de la llamada.
         while (xQueueReceive(uart2_txq, &ch, pdMS_TO_TICKS(500)) == pdPASS) {
@@ -80,8 +84,7 @@ void taskUART2_transmit(void *args __attribute__((unused))) {
 void taskUART2_receive(void *args __attribute__((unused))) {
     int data;
     for(;;) {
-        data = UART2_receive();
-        if (data != -1) {
+        while((data = UART2_receive()) != -1) {
             UART2_process_data(data);
         }
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -90,23 +93,22 @@ void taskUART2_receive(void *args __attribute__((unused))) {
 
 int UART2_receive() {
     int data;
-    // Intenta recibir un dato de la cola uart1_rxq. Si no hay datos, se bloquea durante 500 ms; si hay, lo devuelve
+    // Intenta recibir un dato de la cola uart2_rxq. Si no hay datos, se bloquea durante 500 ms; si hay, lo devuelve
     if (xQueueReceive(uart2_rxq, &data, pdMS_TO_TICKS(500)) == pdPASS) {
         return data;
     }
     return -1;
 }
 
-// UART1_PROCESS_DATA
-// Envia un byte de datos a través de UART1 y lo almacena en el buffer
-static void UART2_process_data(uint8_t data) {
-    /*UART2_putchar(data);*/
-    buffer_uart2[i_uart2] = data;
-    i_uart2++;
+// UART2_PROCESS_DATA
+// Envia un byte de datos a través de UART2 y lo almacena en el buffer
+static void UART2_process_data(uint16_t data) {
+    //UART2_putchar(data);
+    buffer_write(data);
 }
 
-char *UART2_get_buffer(void) {
-    return buffer_uart2;
+uint16_t *UART2_get_buffer(void) {
+    return buffer;
 }
 
 uint16_t UART2_puts(const char *s) {
@@ -124,7 +126,7 @@ uint16_t UART2_puts(const char *s) {
     return nsent;
 }
 
-void UART2_putchar(char ch) {
+void UART2_putchar(uint16_t ch) {
     xQueueSend(uart2_txq, &ch, portMAX_DELAY);
 }
 
@@ -134,11 +136,67 @@ void usart2_isr() {
     // flag USART_SR_RXNE: Receive Data Register Not Empty
     while (usart_get_flag(USART2, USART_SR_RXNE)) {
         // Leer el byte de datos recibido del registro de datos de USART1
-        uint8_t data = (uint8_t)usart_recv(USART2);  // Leer el byte recibido
+        uint16_t data = usart_recv(USART2);  // Leer el byte recibido
         // Añade el byte de datos a la cola de recepción desde la rutina de interrupción, sin prioridad de interrupción (NULL)
         if(xQueueSendToBackFromISR(uart2_rxq, &data, NULL) != pdTRUE) { // Encolar el byte en RXQ
             // Si falla, se resetea la cola
             xQueueReset(uart2_rxq);
         }
     }
+}
+
+bool UART2_buffer_read(uint16_t *data) {
+    if (head == tail && !buffer_full) {
+        // Buffer vacío
+        return false;
+    }
+
+    *data = buffer[tail];
+    tail = (tail + 1) % SIZE_BUFFER;
+    buffer_full = false;  // Después de leer, el buffer ya no puede estar lleno
+    return true;
+}
+
+static void buffer_write(uint16_t data) {
+    if (buffer_full) {
+        // Opcional: manejar el caso de buffer lleno, como sobrescribir el dato más antiguo.
+        tail = (tail + 1) % SIZE_BUFFER;
+    }
+
+    buffer[head] = data;  // Escribe el dato en la posición de head
+    head = (head + 1) % SIZE_BUFFER;
+
+    // Verifica si el buffer está lleno
+    if (head == tail) {
+        buffer_full = true;
+    } else {
+        buffer_full = false;
+    }
+}
+
+void UART2_print_buffer(void) {
+    uint16_t i = tail;
+
+    // Verificar si el buffer está vacío
+    if (head == tail && !buffer_full) {
+        UART1_puts("Buffer vacío.\r\n");
+        return;
+    }
+
+    UART1_puts("Contenido del buffer:\r\n");
+
+    // Si el buffer no está lleno, imprimir desde tail hasta head
+    while (i != head || (i == head && buffer_full)) {
+        UART1_putchar(buffer[i]);
+        i = (i + 1) % SIZE_BUFFER;
+
+        // Si el buffer estaba lleno, necesitamos asegurarnos de que
+        // no imprima dos veces al dar una vuelta completa
+        if (buffer_full && i == head) {
+            buffer_full = false; // Resetear flag de buffer lleno
+            break;
+        }
+    }
+    UART1_putchar('\r');
+    UART1_putchar('\n');
 }

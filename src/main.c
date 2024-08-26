@@ -85,6 +85,7 @@ int main(void) {
     xTaskCreate(taskUART2_receive, "UART2_receive", 100, NULL, 2, NULL);  // Crear tarea para UART_receive
 
     xTaskCreate(taskTest, "Test", 100, NULL, 2, NULL);  // Crear tarea para Test
+    xTaskCreate(taskPrintBuffer, "Print_buffer", 100, NULL, 2, NULL);  // Crear tarea para Test
 
     /*
     auto_reload_timer = xTimerCreate("AutoReload", pdMS_TO_TICKS(5000), pdTRUE, (void *) 0, autoReloadCallback);

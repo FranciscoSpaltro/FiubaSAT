@@ -28,6 +28,7 @@
         "usart.h": "c",
         "rcc.h": "c",
         "semphr.h": "c",
-        "uart1.h": "c"
+        "uart1.h": "c",
+        "queue.h": "c"
     }
 }

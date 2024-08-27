@@ -2,6 +2,7 @@
 #include "uart.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include "stdio.h"
 
 typedef struct {
     uint32_t usart;  // Identificador del USART
@@ -12,6 +13,7 @@ typedef struct {
     QueueHandle_t txq;  // Cola de transmisión
     QueueHandle_t rxq;  // Cola de recepción
     SemaphoreHandle_t mutex;  // Mutex para protección de acceso
+    int interrupciones;  // Contador de interrupciones
 } uart_t;
 
 // Definición de estructuras UART
@@ -113,6 +115,7 @@ static void uart_init(uart_t *uart, uint32_t usart) {
     uart->txq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
     uart->rxq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
     uart->mutex = xSemaphoreCreateBinary();
+    uart->interrupciones = 0;
 }
 
 // Manejadores de UARTs
@@ -147,10 +150,7 @@ void taskUART_transmit(uint32_t usart_id) {
 
 void taskUART_receive(uint32_t usart_id) {
     uart_t *uart = get_uart(usart_id);
-    if (uart == NULL) {
-        UART_puts(USART3, "ERRORRRRRRRRR\r\n");
-        return;
-    }
+    if (uart == NULL) return;
 
     int data;
     for(;;) {
@@ -230,10 +230,12 @@ void usart_generic_isr(uint32_t usart_id) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return;
 
+    uart->interrupciones++;
+
     // flag USART_SR_RXNE: Receive Data Register Not Empty
     while (usart_get_flag(uart->usart, USART_SR_RXNE)) {
         // Leer el byte de datos recibido del registro de datos del USART correspondiente
-        uint16_t data = usart_recv(uart->usart);
+        uint16_t data = usart_recv_blocking(uart->usart);
         // Añade el byte de datos a la cola de recepción desde la rutina de interrupción, sin prioridad de interrupción (NULL)
         if (xQueueSendToBackFromISR(uart->rxq, &data, NULL) != pdTRUE) { 
             // Si falla, se resetea la cola
@@ -296,6 +298,16 @@ void UART_print_buffer(uint32_t usart_id) {
             break;
         }
     }
+    UART_putchar(USART3, '\r');
+    UART_putchar(USART3, '\n');
+
+    UART_puts(USART3, "Interrupciones: ");
+    // Convertir el número de interrupciones a una cadena
+    char buffer[10];  // Asegúrate de que el buffer sea lo suficientemente grande
+    snprintf(buffer, sizeof(buffer), "%u", uart->interrupciones);
+    // Enviar la cadena a través del UART
+    UART_puts(USART3, buffer);
+
     UART_putchar(USART3, '\r');
     UART_putchar(USART3, '\n');
 }

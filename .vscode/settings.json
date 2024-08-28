@@ -29,6 +29,7 @@
         "rcc.h": "c",
         "semphr.h": "c",
         "uart1.h": "c",
-        "queue.h": "c"
+        "queue.h": "c",
+        "nvic.h": "c"
     }
 }

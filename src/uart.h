@@ -12,19 +12,13 @@
 
 #define SIZE_BUFFER 256  // Define el tamaño del buffer
 
-// Identificadores para los UARTs
-#define UART1 USART1
-#define UART2 USART2
-#define UART3 USART3
+
 
 // Configura el periférico USART
 void UART_setup(uint32_t usart, uint32_t baudrate);
 
 // Tarea que transmite datos a través de UART1
 void taskUART_transmit(uint32_t usart_id);
-
-// Tarea que recibe datos de la cola uart1_rxq, los almacena en el buffer y los envía a través de UART1
-void taskUART_receive(uint32_t usart_id);
 
 // OBS: el encolamiento de datos en la cola de RX se realiza en la interrupción USART_ISR
 
@@ -45,5 +39,11 @@ void usart_generic_isr(uint32_t usart_id);
 
 // Imprime el contenido del buffer de UART
 void UART_print_buffer(uint32_t usart_id);
+
+// Espera a que haya datos disponibles en la cola de recepción
+BaseType_t UART_wait_for_data(uint32_t usart_id, TickType_t ticks_to_wait);
+
+// Libera el semáforo de acceso a la cola de transmisión
+void UART_release_semaphore(uint32_t usart_id);
 
 #endif

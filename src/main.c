@@ -15,6 +15,27 @@
 // Declaración del prototipo de la función taskUART
 static TaskHandle_t blink_handle;
 
+static void taskUART3_receive(uint32_t usart_id); 
+
+/* Acá estaría la tarea asignada al periférico conectado a la interfaz USART3 */
+static void taskUART3_receive(uint32_t usart_id) {
+    int data;
+    for (;;) {
+        // Esperar a que el semáforo indique que hay datos disponibles
+        if (UART_wait_for_data(usart_id, portMAX_DELAY) == pdTRUE) {
+            // Procesar todos los datos en la cola
+            while (data = UART_receive(usart_id), data != -1) {
+                // Aquí puedes manejar el dato recibido (por ejemplo, almacenarlo o procesarlo)
+                UART_putchar(USART3, data);
+            }
+
+            // Liberar el semáforo después de procesar los datos
+            UART_release_semaphore(usart_id);
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
 /* Handler in case our application overflows the stack */
 void vApplicationStackOverflowHook(TaskHandle_t xTask __attribute__((unused)), char *pcTaskName __attribute__((unused))) {
 	for (;;);
@@ -41,7 +62,7 @@ int main(void) {
     // Creación de tareas genéricas para transmisión UART
     //xTaskCreate((TaskFunction_t)taskUART_receive, "UART1 RX", 128, (void *)USART1, 2, NULL);
     //xTaskCreate((TaskFunction_t)taskUART_receive, "UART2 RX", 128, (void *)USART2, 2, NULL);
-    //xTaskCreate((TaskFunction_t)taskUART_receive, "UART3 RX", 128, (void *)USART3, 2, NULL);
+    xTaskCreate((TaskFunction_t)taskUART3_receive, "UART3 RX", 128, (void *)USART3, 2, NULL);
 
     //xTaskCreate(taskTest, "Test", 100, NULL, 2, NULL);  // Crear tarea para Test
     xTaskCreate(taskPrintBuffer, "Print_buffer", 100, NULL, 2, NULL);  // Crear tarea para Test

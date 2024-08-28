@@ -19,18 +19,18 @@ static void taskUART3_receive(uint32_t usart_id);
 
 /* Acá estaría la tarea asignada al periférico conectado a la interfaz USART3 */
 static void taskUART3_receive(uint32_t usart_id) {
-    int data;
+    uint16_t data;
     for (;;) {
         // Esperar a que el semáforo indique que hay datos disponibles
-        if (UART_wait_for_data(usart_id, portMAX_DELAY) == pdTRUE) {
+        if (UART_semaphore_take(usart_id, portMAX_DELAY) == pdTRUE) {
             // Procesar todos los datos en la cola
-            while (data = UART_receive(usart_id), data != -1) {
+            while (UART_receive(usart_id, &data)) {
                 // Aquí puedes manejar el dato recibido (por ejemplo, almacenarlo o procesarlo)
                 UART_putchar(USART3, data);
             }
 
             // Liberar el semáforo después de procesar los datos
-            UART_release_semaphore(usart_id);
+            UART_semaphore_release(usart_id);
         }
         vTaskDelay(pdMS_TO_TICKS(500));
     }

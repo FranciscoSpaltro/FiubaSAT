@@ -5,21 +5,24 @@
 #include <stdio.h>
 #include <string.h>
 
+#define SIZE_BUFFER 256  // Queues size
+
 typedef struct {
-    uint32_t usart;  // Identificador del USART    
+    uint32_t usart;  // USART_ID 
     QueueHandle_t txq;  // Cola de transmisión
-    QueueHandle_t rxq;  // Cola de recepción
+    QueueHandle_t rxq;  // Cola de recepción donde se bufferean los datos
     SemaphoreHandle_t mutex;  // Mutex para protección de acceso
-    SemaphoreHandle_t semaphore; // Semáforo para sincronización
+    SemaphoreHandle_t semaphore; // Semáforo para acceder a datos de rxq
     int interrupciones;  // Contador de interrupciones
 } uart_t;
 
 // Definición de estructuras UART
-uart_t uart1;
-uart_t uart2;
-uart_t uart3;
+static uart_t uart1;
+static uart_t uart2;
+static uart_t uart3;
 
 static void uart_init(uart_t *uart, uint32_t usart);
+static void usart_generic_isr(uint32_t usart_id);
 
 void UART_setup(uint32_t usart, uint32_t baudrate) {
     // Configuración del reloj y pines según el USART
@@ -146,16 +149,11 @@ void taskUART_transmit(uint32_t usart_id) {
     }
 }
 
-int UART_receive(uint32_t usart_id) {
+BaseType_t UART_receive(uint32_t usart_id, uint16_t *data) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return -1;
 
-    int data;
-    // Intenta recibir un dato de la cola uart1_rxq. Si no hay datos, se bloquea durante 500 ms; si hay, lo devuelve
-    if (xQueueReceive(uart->rxq, &data, pdMS_TO_TICKS(500)) == pdPASS) {
-        return data;
-    }
-    return -1;
+    return xQueueReceive(uart->rxq, data, portMAX_DELAY);
 }
 
 uint16_t UART_puts(uint32_t usart_id, const char *s) {
@@ -195,7 +193,7 @@ void usart3_isr(void) {
     usart_generic_isr(USART3);
 }
 
-void usart_generic_isr(uint32_t usart_id) {
+static void usart_generic_isr(uint32_t usart_id) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return;
 
@@ -260,14 +258,14 @@ void UART_print_buffer(uint32_t usart_id) {
     UART_putchar(USART3, '\n');
 }
 
-BaseType_t UART_wait_for_data(uint32_t usart_id, TickType_t ticks_to_wait) {
+BaseType_t UART_semaphore_take(uint32_t usart_id, TickType_t ticks_to_wait) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return pdFAIL;
 
     return xSemaphoreTake(uart->semaphore, ticks_to_wait);
 }
 
-void UART_release_semaphore(uint32_t usart_id) {
+void UART_semaphore_release(uint32_t usart_id) {
     uart_t *uart = get_uart(usart_id);
     if (uart != NULL) {
         xSemaphoreGive(uart->mutex);

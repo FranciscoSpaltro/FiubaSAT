@@ -33,10 +33,10 @@ void taskTest(void *args __attribute__((unused))){
     // Se espera un segundo
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    int data;
+    uint16_t data;
     int i = 0;
     // Recibe los datos de la cola de RX y los compara con la cadena de prueba
-    while((data = UART_receive(USART1)) != -1){
+    while(UART_receive(USART1, &data)){
         if(string_1[i] != (char)data || i == len_string_1) {
             UART_puts(USART3, "Error al recibir datos por UART1.\r\n");
             continue;
@@ -48,7 +48,7 @@ void taskTest(void *args __attribute__((unused))){
         UART_puts(USART3, "Prueba UART1 runned successfully\r\n");
 
     // Recibe los datos de la cola de RX y los compara con la cadena de prueba
-    while((data = UART_receive(USART2)) != -1){
+    while(UART_receive(USART2, &data)){
         if(string_1[i] != (char)data || i == len_string_2) {
             UART_puts(USART3, "Error al recibir datos por UART2.\r\n");
             continue;

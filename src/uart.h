@@ -10,10 +10,6 @@
 #include <libopencm3/stm32/usart.h>
 #include <libopencm3/cm3/nvic.h>
 
-#define SIZE_BUFFER 256  // Define el tamaño del buffer
-
-
-
 // Configura el periférico USART
 void UART_setup(uint32_t usart, uint32_t baudrate);
 
@@ -23,7 +19,7 @@ void taskUART_transmit(uint32_t usart_id);
 // OBS: el encolamiento de datos en la cola de RX se realiza en la interrupción USART_ISR
 
 // Recibe un dato desde la cola de recepción de UART, que fue llenada por USART_ISR
-int UART_receive(uint32_t usart_id);
+BaseType_t UART_receive(uint32_t usart_id, uint16_t *data);
 
 // Devuelve el buffer de recepción de UART
 uint16_t *UART_get_buffer(uint32_t usart_id);
@@ -34,16 +30,13 @@ uint16_t UART_puts(uint32_t usart_id, const char *s);
 // Encola el dato en uart_txq, bloqueando la tarea si la cola está llena
 void UART_putchar(uint32_t usart_id, uint16_t ch);
 
-// Manejadores de interrupciones de UART
-void usart_generic_isr(uint32_t usart_id);
-
 // Imprime el contenido del buffer de UART
 void UART_print_buffer(uint32_t usart_id);
 
 // Espera a que haya datos disponibles en la cola de recepción
-BaseType_t UART_wait_for_data(uint32_t usart_id, TickType_t ticks_to_wait);
+BaseType_t UART_semaphore_take(uint32_t usart_id, TickType_t ticks_to_wait);
 
 // Libera el semáforo de acceso a la cola de transmisión
-void UART_release_semaphore(uint32_t usart_id);
+void UART_semaphore_release(uint32_t usart_id);
 
 #endif

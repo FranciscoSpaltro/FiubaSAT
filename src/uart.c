@@ -149,11 +149,11 @@ void taskUART_transmit(uint32_t usart_id) {
     }
 }
 
-BaseType_t UART_receive(uint32_t usart_id, uint16_t *data) {
+BaseType_t UART_receive(uint32_t usart_id, uint16_t *data, TickType_t xTicksToWait) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return -1;
 
-    return xQueueReceive(uart->rxq, data, portMAX_DELAY);
+    return xQueueReceive(uart->rxq, data, xTicksToWait);
 }
 
 uint16_t UART_puts(uint32_t usart_id, const char *s) {

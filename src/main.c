@@ -24,7 +24,7 @@ static void taskUART3_receive(uint32_t usart_id) {
         // Esperar a que el semáforo indique que hay datos disponibles
         if (UART_semaphore_take(usart_id, portMAX_DELAY) == pdTRUE) {
             // Procesar todos los datos en la cola
-            while (UART_receive(usart_id, &data)) {
+            while (UART_receive(usart_id, &data, pdMS_TO_TICKS(100))) {
                 // Aquí puedes manejar el dato recibido (por ejemplo, almacenarlo o procesarlo)
                 UART_putchar(USART3, data);
             }
@@ -64,7 +64,7 @@ int main(void) {
     //xTaskCreate((TaskFunction_t)taskUART_receive, "UART2 RX", 128, (void *)USART2, 2, NULL);
     xTaskCreate((TaskFunction_t)taskUART3_receive, "UART3 RX", 128, (void *)USART3, 2, NULL);
 
-    //xTaskCreate(taskTest, "Test", 100, NULL, 2, NULL);  // Crear tarea para Test
+    xTaskCreate(taskTest, "Test", 100, NULL, 2, NULL);  // Crear tarea para Test
     xTaskCreate(taskPrintBuffer, "Print_buffer", 100, NULL, 2, NULL);  // Crear tarea para Test
 
     // Start RTOS Task scheduler

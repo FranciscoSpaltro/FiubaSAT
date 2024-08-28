@@ -19,7 +19,7 @@ void taskUART_transmit(uint32_t usart_id);
 // OBS: el encolamiento de datos en la cola de RX se realiza en la interrupción USART_ISR
 
 // Recibe un dato desde la cola de recepción de UART, que fue llenada por USART_ISR
-BaseType_t UART_receive(uint32_t usart_id, uint16_t *data);
+BaseType_t UART_receive(uint32_t usart_id, uint16_t *data, TickType_t xTicksToWait);
 
 // Devuelve el buffer de recepción de UART
 uint16_t *UART_get_buffer(uint32_t usart_id);

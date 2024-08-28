@@ -63,6 +63,9 @@ void taskTest(void *args __attribute__((unused))){
 }
 
 void taskPrintBuffer(void *args __attribute__((unused))) {
+    UART_puts(USART1, "Prueba imprimir cola USART1\r\n");
+    UART_puts(USART2, "Prueba imprimir cola USART2\r\n");
+    UART_puts(USART3, "Prueba imprimir cola USART3\r\n");
     for (;;) {
         UART_print_buffer(USART1);
         UART_print_buffer(USART2);

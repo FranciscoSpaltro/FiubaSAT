@@ -39,11 +39,11 @@ int main(void) {
     xTaskCreate((TaskFunction_t)taskUART_transmit, "UART3 TX", 128, (void *)USART3, 2, NULL);
 
     // Creación de tareas genéricas para transmisión UART
-    xTaskCreate((TaskFunction_t)taskUART_receive, "UART1 RX", 128, (void *)USART1, 2, NULL);
-    xTaskCreate((TaskFunction_t)taskUART_receive, "UART2 RX", 128, (void *)USART2, 2, NULL);
-    xTaskCreate((TaskFunction_t)taskUART_receive, "UART3 RX", 128, (void *)USART3, 2, NULL);
+    //xTaskCreate((TaskFunction_t)taskUART_receive, "UART1 RX", 128, (void *)USART1, 2, NULL);
+    //xTaskCreate((TaskFunction_t)taskUART_receive, "UART2 RX", 128, (void *)USART2, 2, NULL);
+    //xTaskCreate((TaskFunction_t)taskUART_receive, "UART3 RX", 128, (void *)USART3, 2, NULL);
 
-    xTaskCreate(taskTest, "Test", 100, NULL, 2, NULL);  // Crear tarea para Test
+    //xTaskCreate(taskTest, "Test", 100, NULL, 2, NULL);  // Crear tarea para Test
     xTaskCreate(taskPrintBuffer, "Print_buffer", 100, NULL, 2, NULL);  // Crear tarea para Test
 
     // Start RTOS Task scheduler

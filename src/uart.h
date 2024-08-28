@@ -43,9 +43,6 @@ void UART_putchar(uint32_t usart_id, uint16_t ch);
 // Manejadores de interrupciones de UART
 void usart_generic_isr(uint32_t usart_id);
 
-// Lee un dato del buffer de UART
-bool UART_buffer_read(uint32_t usart_id, uint16_t *data);
-
 // Imprime el contenido del buffer de UART
 void UART_print_buffer(uint32_t usart_id);
 

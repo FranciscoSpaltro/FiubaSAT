@@ -2,14 +2,11 @@
 #include "uart.h"
 #include <stdint.h>
 #include <stdbool.h>
-#include "stdio.h"
+#include <stdio.h>
+#include <string.h>
 
 typedef struct {
-    uint32_t usart;  // Identificador del USART
-    uint16_t buffer[SIZE_BUFFER];  // Buffer de datos
-    uint16_t head;  // Índice de escritura
-    uint16_t tail;  // Índice de lectura
-    bool buffer_full;  // Indica si el buffer está lleno
+    uint32_t usart;  // Identificador del USART    
     QueueHandle_t txq;  // Cola de transmisión
     QueueHandle_t rxq;  // Cola de recepción
     SemaphoreHandle_t mutex;  // Mutex para protección de acceso
@@ -22,8 +19,7 @@ uart_t uart2;
 uart_t uart3;
 
 static void uart_init(uart_t *uart, uint32_t usart);
-static void UART_process_data(uint32_t usart_id, uint16_t data);
-static void buffer_write(uint32_t usart_id, uint16_t data);
+static void UART_process_data(uart_t *uart, uint16_t data);
 
 void UART_setup(uint32_t usart, uint32_t baudrate) {
     // Configuración del reloj y pines según el USART
@@ -109,9 +105,6 @@ void UART_setup(uint32_t usart, uint32_t baudrate) {
 
 static void uart_init(uart_t *uart, uint32_t usart) {
     uart->usart = usart;  // Asigna el USART correspondiente
-    uart->head = 0;
-    uart->tail = 0;
-    uart->buffer_full = false;
     uart->txq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
     uart->rxq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
     uart->mutex = xSemaphoreCreateBinary();
@@ -139,7 +132,6 @@ void taskUART_transmit(uint32_t usart_id) {
             // Esperar hasta que el registro de transmisión esté vacío
             while (!usart_get_flag(uart->usart, USART_SR_TXE))
                 taskYIELD(); // Ceder la CPU hasta que esté listo
-
             // Enviar el byte a través de USART
             usart_send_blocking(uart->usart, ch);
         }
@@ -155,7 +147,7 @@ void taskUART_receive(uint32_t usart_id) {
     int data;
     for(;;) {
         while((data = UART_receive(usart_id)) != -1) {
-            UART_process_data(usart_id, data);
+            UART_process_data(uart, data);
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
@@ -175,18 +167,8 @@ int UART_receive(uint32_t usart_id) {
 
 // UART_PROCESS_DATA
 // Envia un byte de datos a través de UART y lo almacena en el buffer
-static void UART_process_data(uint32_t usart_id, uint16_t data) {
-    uart_t *uart = get_uart(usart_id);
-    if (uart == NULL) return;
-
-    buffer_write(usart_id, data);
-}
-
-uint16_t *UART_get_buffer(uint32_t usart_id) {
-    uart_t *uart = get_uart(usart_id);
-    if (uart == NULL) return NULL;
-
-    return uart->buffer;
+static void UART_process_data(uart_t *uart, uint16_t data) {
+    //UART_putchar(uart->usart, data);
 }
 
 uint16_t UART_puts(uint32_t usart_id, const char *s) {
@@ -244,70 +226,46 @@ void usart_generic_isr(uint32_t usart_id) {
     }
 }
 
-bool UART_buffer_read(uint32_t usart_id, uint16_t *data) {
-    uart_t *uart = get_uart(usart_id);
-    if (uart == NULL) return false;
-
-    if (uart->head == uart->tail && !uart->buffer_full) {
-        // Buffer vacío
-        return false;
-    }
-
-    *data = uart->buffer[uart->tail];
-    uart->tail = (uart->tail + 1) % SIZE_BUFFER;
-    uart->buffer_full = false;  // Después de leer, el buffer ya no puede estar lleno
-    return true;
-}
-
-static void buffer_write(uint32_t usart_id, uint16_t data) {
-    uart_t *uart = get_uart(usart_id);
-    if (uart == NULL) return;
-
-    if (uart->buffer_full) {
-        // Opcional: manejar el caso de buffer lleno, como sobrescribir el dato más antiguo.
-        uart->tail = (uart->tail + 1) % SIZE_BUFFER;
-    }
-
-    uart->buffer[uart->head] = data;  // Escribe el dato en la posición de head
-    uart->head = (uart->head + 1) % SIZE_BUFFER;
-
-    // Verifica si el buffer está lleno
-    if (uart->head == uart->tail) {
-        uart->buffer_full = true;
-    } else {
-        uart->buffer_full = false;
-    }
-}
-
 void UART_print_buffer(uint32_t usart_id) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return;
-
-    uint16_t i = uart->tail;
-    UART_puts(USART3, "Contenido del buffer:\r\n");
-
-    // Si el buffer no está lleno, imprimir desde tail hasta head
-    while (i != uart->head || (i == uart->head && uart->buffer_full)) {
-        UART_putchar(USART3, uart->buffer[i]);
-        i = (i + 1) % SIZE_BUFFER;
-
-        // Si el buffer estaba lleno, necesitamos asegurarnos de que
-        // no imprima dos veces al dar una vuelta completa
-        if (uart->buffer_full && i == uart->head) {
-            uart->buffer_full = false; // Resetear flag de buffer lleno
-            break;
-        }
+    
+    // Calcular el número de elementos en la cola
+    UBaseType_t items_in_queue = uxQueueMessagesWaiting(uart->rxq);
+    
+    if (items_in_queue == 0) {
+        UART_puts(USART3, "La cola está vacía.\r\n");
+        return;
     }
-    UART_putchar(USART3, '\r');
-    UART_putchar(USART3, '\n');
 
-    UART_puts(USART3, "Interrupciones: ");
-    // Convertir el número de interrupciones a una cadena
-    char buffer[10];  // Asegúrate de que el buffer sea lo suficientemente grande
-    snprintf(buffer, sizeof(buffer), "%u", uart->interrupciones);
-    // Enviar la cadena a través del UART
-    UART_puts(USART3, buffer);
+    switch (usart_id)
+    {
+    case USART1:
+        UART_puts(USART3, "Contenido en la cola USART 1: ");
+        break;
+    
+    case USART2:
+        UART_puts(USART3, "Contenido en la cola USART 2: ");
+        break;
 
+    case USART3:
+        UART_puts(USART3, "Contenido en la cola USART 3: ");
+        break;
+    
+    default:
+        break;
+    }
+
+    uint16_t data;
+    for (UBaseType_t i = 0; i < items_in_queue; i++) {
+        if (xQueuePeek(uart->rxq, &data, 0) == pdTRUE) {
+            UART_putchar(USART3, data);
+        }
+        // Sacar el siguiente elemento para avanzar en la cola
+        xQueueReceive(uart->rxq, &data, 0);
+        // Volver a poner el elemento para mantener la cola intacta
+        xQueueSendToBack(uart->rxq, &data, 0);
+    }
     UART_putchar(USART3, '\r');
     UART_putchar(USART3, '\n');
 }

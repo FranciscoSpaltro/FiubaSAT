@@ -12,7 +12,7 @@ typedef struct {
     QueueHandle_t txq;  // Cola de transmisión
     QueueHandle_t rxq;  // Cola de recepción donde se bufferean los datos
     SemaphoreHandle_t mutex;  // Mutex para protección de acceso
-    SemaphoreHandle_t semaphore; // Semáforo para acceder a datos de rxq
+    SemaphoreHandle_t semaphore; // Semáforo para señalizar datos de rxq
     int interrupciones;  // Contador de interrupciones
 } uart_t;
 
@@ -21,10 +21,24 @@ static uart_t uart1;
 static uart_t uart2;
 static uart_t uart3;
 
-static void uart_init(uart_t *uart, uint32_t usart);
+// Prototipos de funciones
+static BaseType_t uart_init(uart_t *uart, uint32_t usart);
 static void usart_generic_isr(uint32_t usart_id);
 
-void UART_setup(uint32_t usart, uint32_t baudrate) {
+// Manejadores de UARTs
+static uart_t *get_uart(uint32_t usart_id) {
+    switch (usart_id) {
+        case USART1: return &uart1;
+        case USART2: return &uart2;
+        case USART3: return &uart3;
+        default: return NULL;
+    }
+}
+
+BaseType_t UART_setup(uint32_t usart, uint32_t baudrate) {
+    uart_t *uart = get_uart(usart);
+    if (uart == NULL) return pdFAIL;
+
     // Configuración del reloj y pines según el USART
     if (usart == USART1) {
         // Habilitar el clock para GPIOA (donde están conectados los pines TX y RX de UART1)
@@ -46,7 +60,7 @@ void UART_setup(uint32_t usart, uint32_t baudrate) {
         
         // Habilitar la interrupción de UART1 en el NVIC (a nivel sistema para que el controlador de interrupciones pueda manejarla)
         nvic_enable_irq(NVIC_USART1_IRQ);
-        uart_init(&uart1, USART1);
+        if(uart_init(&uart1, USART1) != pdPASS) return pdFAIL;
 
     } else if (usart == USART2) {
         // Habilitar el clock para GPIOA (donde están conectados los pines TX y RX de UART2)
@@ -68,7 +82,7 @@ void UART_setup(uint32_t usart, uint32_t baudrate) {
 
         // Habilitar la interrupción de UART2 en el NVIC (a nivel sistema para que el controlador de interrupciones pueda manejarla)
         nvic_enable_irq(NVIC_USART2_IRQ);
-        uart_init(&uart2, USART2);
+        if(uart_init(&uart2, USART2) != pdPASS) return pdFAIL;
 
     } else if (usart == USART3) {
         // Habilitar el clock para GPIOA (donde están conectados los pines TX y RX de UART3)
@@ -90,7 +104,7 @@ void UART_setup(uint32_t usart, uint32_t baudrate) {
         
         // Habilitar la interrupción de UART3 en el NVIC (a nivel sistema para que el controlador de interrupciones pueda manejarla)
         nvic_enable_irq(NVIC_USART3_IRQ);
-        uart_init(&uart3, USART3);
+        if(uart_init(&uart3, USART3) != pdPASS) return pdFAIL;
     }
 
     // Configuración de USART
@@ -104,25 +118,40 @@ void UART_setup(uint32_t usart, uint32_t baudrate) {
     usart_enable(usart);
     // Dentro de las fuentes de interrupción de UART, habilitar la interrupción de recepción
     usart_enable_rx_interrupt(usart);
+
+    return pdPASS;
 }
 
-static void uart_init(uart_t *uart, uint32_t usart) {
+// Inicialización de UART
+static BaseType_t uart_init(uart_t *uart, uint32_t usart) {
     uart->usart = usart;  // Asigna el USART correspondiente
-    uart->txq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
-    uart->rxq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t));
-    uart->mutex = xSemaphoreCreateMutex();
-    uart->semaphore = xSemaphoreCreateBinary();
-    uart->interrupciones = 0;
-}
+    uart->txq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t)); // Crea la cola de transmisión
+    if (uart->txq == NULL) return pdFAIL;
 
-// Manejadores de UARTs
-static uart_t *get_uart(uint32_t usart_id) {
-    switch (usart_id) {
-        case USART1: return &uart1;
-        case USART2: return &uart2;
-        case USART3: return &uart3;
-        default: return NULL;
+    uart->rxq = xQueueCreate(SIZE_BUFFER, sizeof(uint16_t)); // Crea la cola de recepción
+    if (uart->rxq == NULL) {
+        vQueueDelete(uart->txq);
+        return pdFAIL;
     }
+
+    uart->mutex = xSemaphoreCreateMutex();
+    if (uart->mutex == NULL) {
+        vQueueDelete(uart->txq);
+        vQueueDelete(uart->rxq);
+        return pdFAIL;
+    }
+    xSemaphoreGive(uart->mutex);
+
+    uart->semaphore = xSemaphoreCreateBinary();
+    if (uart->semaphore == NULL) {
+        vQueueDelete(uart->txq);
+        vQueueDelete(uart->rxq);
+        vSemaphoreDelete(uart->mutex);
+        return pdFAIL;
+    }
+
+    uart->interrupciones = 0;
+    return pdPASS;
 }
 
 void taskUART_transmit(uint32_t usart_id) {
@@ -153,32 +182,52 @@ BaseType_t UART_receive(uint32_t usart_id, uint16_t *data, TickType_t xTicksToWa
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return -1;
 
+    // Si hay datos devuelvo y sino espero xTicksToWait
     return xQueueReceive(uart->rxq, data, xTicksToWait);
 }
 
-uint16_t UART_puts(uint32_t usart_id, const char *s) {
+// Reseteo buffer de recepcion de UART
+BaseType_t UART_clear_rx_queue(uint32_t usart_id, TickType_t xTicksToWait) {
+    uart_t *uart = get_uart(usart_id);
+    if (uart == NULL) return pdFAIL;
+
+    // Aquí se usa un mutex para proteger el acceso a la cola
+    if(xSemaphoreTake(uart->mutex, xTicksToWait) != pdTRUE) return pdFAIL;
+
+    // Vaciar la cola de recepción
+    if(xQueueReset(uart->rxq) != pdTRUE) {
+        xSemaphoreGive(uart->mutex);
+        return pdFAIL;
+    }
+
+    if(xSemaphoreGive(uart->mutex) != pdTRUE) return pdFAIL;
+    
+    return pdPASS;
+}
+
+// Envio cadena de caracteres a través de UART
+uint16_t UART_puts(uint32_t usart_id, const char *s, TickType_t xTicksToWait) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return 0;
 
     uint16_t nsent = 0;
     // Recorre el string s hasta encontrar el caracter nulo
     for ( ; *s; s++) {
-        // Añade el caracter a la cola uart1_txq. portMAX_DELAY indica que la tarea se bloqueará indefinidamente si la cola está llena
-        if(xQueueSend(uart->txq, s, portMAX_DELAY) != pdTRUE) {
-            // Si falla, se resetea la cola y se devuelve la cantidad de caracteres enviados
-            xQueueReset(uart->txq);
-            return nsent; // Queue full
+        // Añade el caracter a la cola uart1_txq. Espera xTicksToWait (portMAX_DELAY espera indefnidamente)
+        if(xQueueSend(uart->txq, s, xTicksToWait) != pdTRUE) {
+            return nsent; // Queue full nsent < strlen(s)
         }
         nsent++;
     }
     return nsent;
 }
 
-void UART_putchar(uint32_t usart_id, uint16_t ch) {
+// Envio de un caracter a través de UART
+BaseType_t UART_putchar(uint32_t usart_id, uint16_t ch, TickType_t xTicksToWait) {
     uart_t *uart = get_uart(usart_id);
-    if (uart == NULL) return;
+    if (uart == NULL) return pdFAIL;
 
-    xQueueSend(uart->txq, &ch, portMAX_DELAY);
+    return xQueueSend(uart->txq, &ch, xTicksToWait);
 }
 
 void usart1_isr(void) {
@@ -193,10 +242,12 @@ void usart3_isr(void) {
     usart_generic_isr(USART3);
 }
 
+// Rutina de interrupción genérica para USART
 static void usart_generic_isr(uint32_t usart_id) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return;
 
+    // Incrementar el contador de interrupciones (auxiliar)
     uart->interrupciones++;
 
     // flag USART_SR_RXNE: Receive Data Register Not Empty
@@ -207,13 +258,11 @@ static void usart_generic_isr(uint32_t usart_id) {
         if (xQueueSendToBackFromISR(uart->rxq, &data, NULL) == pdTRUE) { 
             // Dar el semáforo para indicar que hay datos disponibles en la cola
             xSemaphoreGiveFromISR(uart->semaphore, NULL);
-        } else {
-            // Si falla, se resetea la cola
-            xQueueReset(uart->rxq);
         }
     }
 }
 
+// Imprimir los elementos en uart->rxq de UART (auxiliar)
 void UART_print_buffer(uint32_t usart_id) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return;
@@ -222,22 +271,22 @@ void UART_print_buffer(uint32_t usart_id) {
     UBaseType_t items_in_queue = uxQueueMessagesWaiting(uart->rxq);
     
     if (items_in_queue == 0) {
-        UART_puts(USART3, "La cola está vacía.\r\n");
+        UART_puts(USART3, "La cola está vacía.\r\n", pdMS_TO_TICKS(500));
         return;
     }
 
     switch (usart_id)
     {
     case USART1:
-        UART_puts(USART3, "RXQ USART 1: ");
+        UART_puts(USART3, "RXQ USART 1: ", pdMS_TO_TICKS(500));
         break;
     
     case USART2:
-        UART_puts(USART3, "RXQ USART 2: ");
+        UART_puts(USART3, "RXQ USART 2: ", pdMS_TO_TICKS(500));
         break;
 
     case USART3:
-        UART_puts(USART3, "RXQ USART 3: ");
+        UART_puts(USART3, "RXQ USART 3: ", pdMS_TO_TICKS(500));
         break;
     
     default:
@@ -247,17 +296,18 @@ void UART_print_buffer(uint32_t usart_id) {
     uint16_t data;
     for (UBaseType_t i = 0; i < items_in_queue; i++) {
         if (xQueuePeek(uart->rxq, &data, 0) == pdTRUE) {
-            UART_putchar(USART3, data);
+            UART_putchar(USART3, data, pdMS_TO_TICKS(500));
         }
         // Sacar el siguiente elemento para avanzar en la cola
         xQueueReceive(uart->rxq, &data, 0);
         // Volver a poner el elemento para mantener la cola intacta
         xQueueSendToBack(uart->rxq, &data, 0);
     }
-    UART_putchar(USART3, '\r');
-    UART_putchar(USART3, '\n');
+    UART_putchar(USART3, '\r', pdMS_TO_TICKS(500));
+    UART_putchar(USART3, '\n', pdMS_TO_TICKS(500));
 }
 
+// Wrapper SemaphoreTake
 BaseType_t UART_semaphore_take(uint32_t usart_id, TickType_t ticks_to_wait) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return pdFAIL;
@@ -265,9 +315,10 @@ BaseType_t UART_semaphore_take(uint32_t usart_id, TickType_t ticks_to_wait) {
     return xSemaphoreTake(uart->semaphore, ticks_to_wait);
 }
 
-void UART_semaphore_release(uint32_t usart_id) {
+// Wrapper SemaphoreGive
+BaseType_t UART_semaphore_release(uint32_t usart_id) {
     uart_t *uart = get_uart(usart_id);
-    if (uart != NULL) {
-        xSemaphoreGive(uart->mutex);
-    }
+    if (uart == NULL) return pdFAIL;
+    
+    return xSemaphoreGive(uart->semaphore);
 }

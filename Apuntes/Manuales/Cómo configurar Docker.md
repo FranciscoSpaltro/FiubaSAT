@@ -16,8 +16,22 @@ El uso de Docker en este proyecto podría fundamentarse utilizando tres aspectos
     - Actua como un complemento a la documentación del proyecto
 
 ---
-
 # UTILIZANDO DOCKERFILE
+1. Abrir la terminal de Docker
+2. Ir a la carpeta donde está el Dockerfile y los .bat
+3. Correr `./run_container.bat` | Obs: hay que clonar libopencm3 y hacer make
+4. Descargar el driver de USBIPD del repositorio
+5. Abrir PowerShell con permisos de administrador
+6. Ubicar el ID del ST-Link con `usbipd list`
+7. Ejecutar `usbipd bind --busid <ID>` con el ID correspondiente
+8. Ejecutar `usbipd attach --wsl --busid <ID>` con el ID correspondiente
+9. (OPC) En WSL, ejecutar `lsusb` para verificar que esté el ST-Link 
+
+
+
+
+---
+# UTILIZANDO DOCKER HUB [REVISAR]
 
 1. Iniciar sesión en Docker Hub
 2. Crear un repositorio y nombrarlo <nombre-de-usuario>/nombre-de-repo
@@ -29,52 +43,19 @@ El uso de Docker en este proyecto podría fundamentarse utilizando tres aspectos
 
 
 ---
-# VSC + Docker + PlatformIO + STM32
-En base a [este artículo](https://www.linkedin.com/pulse/utilizing-docker-visual-studio-code-platformio-dev-container-padhya/)
-
-### Preparación del entorno
-
-1. Instalar Docker ([link](https://docs.docker.com/desktop/install/windows-install/))
-    Para este manual, se instaló la versión 4.32.0
-
-2. Hacer un pull de la imagen de Ubuntu desde los repositorios de Docker
-    - Habilitar la terminal de Docker
-    - Ejecutar `docker pull ubuntu:latest`
-
-3. Correr la imágen
+Observaciones:
 
     `docker run -it --name ubuntu -p 4444:4444 -v "$(pwd)/app":/usr/src/app --privileged -v /dev/bus/usb:/dev/bus/usb ubuntu /bin/bash`
 
-    - docker run: ejecuta un contenedor a partir de una imagen de Docker
-    - -it: (i) mantiene el flujo de entrada del contenedor abierto para poder interactuar con él, (t) asigna una pseudo-terminal al contenedor, permitiendo itneractuar con él como si fuera una terminal
-    - --name ubuntu: da el nombre "ubuntu" al contenedor
-    - -p 4444:4444: mapea el puerto 4444 del host al puerto 4444 del contenedor. Cualquier cosa que escuche en el puerto dentro del contenedor será accesible desde el host
-    - -v "$(pwd)/app":/usr/src/app: monta un volumen. Hace que el directorio app dentro del directorio actual se refleje en /usr/src/app, para poder compartir archivos entre el host y el contenedor
-    - --privileged: da privilegios adicionales al contenedor (por ejemplo, para interactuar con hardware específico)
-    - -v /dev/bus/usb:/dev/bus/usb: monta el dispositivo USB del host dentro del contenedor
-    - ubuntu: especifica la imagen de Docker que se va a utilizar para crear en el contenedor. En este caso, utiliza la versión básica del SO Ubuntu
-    - /bin/bash: es el comando que se ejecutará dentro del contenedor una vez que se inicie. En este caso, se lanza una sesión de Bash para permitir que interactúe con el contenedor a través de la línea de comandos
+- docker run: ejecuta un contenedor a partir de una imagen de Docker
+- -it: (i) mantiene el flujo de entrada del contenedor abierto para poder interactuar con él, (t) asigna una pseudo-terminal al contenedor, permitiendo itneractuar con él como si fuera una terminal
+- --name ubuntu: da el nombre "ubuntu" al contenedor
+- -p 4444:4444: mapea el puerto 4444 del host al puerto 4444 del contenedor. Cualquier cosa que escuche en el puerto dentro del contenedor será accesible desde el host
+- -v "$(pwd)/app":/usr/src/app: monta un volumen. Hace que el directorio app dentro del directorio actual se refleje en /usr/src/app, para poder compartir archivos entre el host y el contenedor
+- --privileged: da privilegios adicionales al contenedor (por ejemplo, para interactuar con hardware específico)
+- -v /dev/bus/usb:/dev/bus/usb: monta el dispositivo USB del host dentro del contenedor
+- ubuntu: especifica la imagen de Docker que se va a utilizar para crear en el contenedor. En este caso, utiliza la versión básica del SO Ubuntu
+- /bin/bash: es el comando que se ejecutará dentro del contenedor una vez que se inicie. En este caso, se lanza una sesión de Bash para permitir que interactúe con el contenedor a través de la línea de comandos
 
-    OBS: modifique `"$(pwd)/app"` por `ruta/app`, sin comillas y con la carpeta app creada
-
-4. Instalar la extensión "Dev Containers" de Microsoft
-
-5. Conectar la imagen de Docker que está corriendo con VSC
-
-    - Abrir la Command Palette (Ctrl + Shift + P)
-    - Escribir dev containers: Attach to Running container
-
-6. Instalar Python en el contenedor, escribiendo en la terminal de VSC:
-    `apt-get update && apt-get install python3 -y && apt-get install python3-venv -y && apt-get install python-is-python3`
-
-7. Instalar PlatformIO en el contenedor desde las extensiones de VSC
-
-#### Hasta acá la guía. De ahora en más, detallo cómo continué:
-
-8. Instalar git
-
-    En la terminal de VSC: `apt-get update && apt-get install -y git`
-
-9. Clonar el repositorio FIUBASAT
-
+> modifique `"$(pwd)/app"` por `ruta/app`, sin comillas y con la carpeta app creada
 

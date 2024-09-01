@@ -107,7 +107,7 @@ BaseType_t UART_setup(uint32_t usart, uint32_t baudrate) {
         if(uart_init(&uart3, USART3) != pdPASS) return pdFAIL;
     }
 
-    // Configuración de USART
+    // Configuración de USART 
     usart_set_baudrate(usart, baudrate);
     usart_set_databits(usart, 8);
     usart_set_stopbits(usart, USART_STOPBITS_1);
@@ -168,7 +168,7 @@ void taskUART_transmit(uint32_t usart_id) {
                 while (!usart_get_flag(uart->usart, USART_SR_TXE))
                     taskYIELD(); // Ceder la CPU hasta que esté listo
                 // Enviar el byte a través de USART
-                usart_send_blocking(uart->usart, ch);
+                usart_send(uart->usart, ch);
             }
             // Liberar el mutex después de transmitir los datos
             xSemaphoreGive(uart->mutex);
@@ -213,7 +213,7 @@ uint16_t UART_puts(uint32_t usart_id, const char *s, TickType_t xTicksToWait) {
     uint16_t nsent = 0;
     // Recorre el string s hasta encontrar el caracter nulo
     for ( ; *s; s++) {
-        // Añade el caracter a la cola uart1_txq. Espera xTicksToWait (portMAX_DELAY espera indefnidamente)
+        // Añade el caracter a la cola uart1_txq. Espera xTicksToWait (portMAX_DELAY espera indefinidamente)
         if(xQueueSend(uart->txq, s, xTicksToWait) != pdTRUE) {
             return nsent; // Queue full nsent < strlen(s)
         }

@@ -23,12 +23,12 @@ void taskTest(void *args __attribute__((unused))){
 
     // Se verifica que la cantidad de caracteres enviados sea la correcta
     if(nsent_1 != sizeof(string_1) - 1){
-        UART_puts(USART3, "Error al enviar datos por UART1\r\n", pdMS_TO_TICKS(100));
+        UART_puts(USART3, "Error al enviar datos por UART1. Cantidad caracteres distinta\r\n", pdMS_TO_TICKS(100));
     }
 
     // Se verifica que la cantidad de caracteres enviados sea la correcta
     if(nsent_2 != sizeof(string_2) - 1){
-        UART_puts(USART3, "Error al enviar datos por UART2\r\n", pdMS_TO_TICKS(100));
+        UART_puts(USART3, "Error al enviar datos por UART2. Cantidad caracteres distinta\r\n", pdMS_TO_TICKS(100));
     }
 
     uint16_t data;

@@ -30,6 +30,7 @@ static void taskUART1_GPS(uint32_t usart_id) {
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
+    
 }
 
 /* Acá estaría la tarea asignada al periférico conectado a la interfaz USART3 */

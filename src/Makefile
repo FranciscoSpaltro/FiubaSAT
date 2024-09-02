@@ -34,7 +34,19 @@ LDLIBS = -L../lib/libopencm3/lib -lopencm3_stm32f1
 
 OBJS = $(SOURCES:.c=.o)
 
-all: $(PROJECT_NAME).elf clean
+all: check_libopencm3 $(PROJECT_NAME).elf clean
+
+check_libopencm3:
+	@if [ ! -d "../lib/libopencm3" ] || [ -z "$$(ls -A ../lib/libopencm3 2>/dev/null)" ]; then \
+		echo "Clonando libopencm3..."; \
+		git clone https://github.com/libopencm3/libopencm3.git ../lib/libopencm3; \
+	else \
+		echo "libopencm3 ya está presente."; \
+	fi
+	@echo "Editando el target del Makefile de libopencm3..."; \
+	sed -i 's/^TARGETS = .*/TARGETS = stm32\/f1/' ../lib/libopencm3/Makefile; \
+	echo "Construyendo libopencm3..."; \
+	cd ../lib/libopencm3 && make TARGETS=stm32/f1
 
 $(PROJECT_NAME).elf: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@
@@ -53,4 +65,4 @@ delete:
 flash:
 	openocd -f /usr/share/openocd/scripts/interface/stlink.cfg -f /usr/share/openocd/scripts/target/stm32f1x.cfg -c "program $(PROJECT_NAME).bin 0x08000000" -c "shutdown"
 
-.PHONY: all clean delete flash
+.PHONY: all clean delete flash check_libopencm3

@@ -16,6 +16,7 @@ SOURCES = \
 	blink.c \
 	test.c \
 	uart.c \
+	i2c.c \
 	../lib/rtos/heap_4.c \
 	../lib/rtos/list.c \
 	../lib/rtos/port.c \

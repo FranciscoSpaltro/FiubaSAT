@@ -18,8 +18,9 @@ Para el desarrollo, es necesario acceder a dispositivos USB que están físicame
     Más info: [nota de la comunidad](https://community.platformio.org/t/debugging-of-stm32f103-clone-bluepill-board-wrong-idcode/14635)
 
 3. Reemplazar el archivo .cfg de openocd para admitir el grabado en Blue Pill genéricas:
-  - Si se construyó el Docker a partir del Dockerfile de este repositorio, no debe hacerse nada
-  - Caso constrario, realizar una de las siguientes accioens:
+  - **Si se construyó el Docker a partir del Dockerfile de este repositorio, no debe hacerse nada**
+  - Caso constrario, realizar una de las siguientes acciones:
+    
     i. Reemplazar el archivo *stm32f1x.cfg* de la carpeta /usr/share/openocd/scripts/target/stm32f1x.cfg por el que se encuentra en el repositorio (FiubaSAT/Drivers)
     ii. Reemplazar el bloque del archivo *stm32f1x.cfg* original:
     

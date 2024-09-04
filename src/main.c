@@ -28,7 +28,6 @@ int main(void) {
     rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
     blink_setup();
-    if(UART_setup(USART1, 115200) != pdPASS) return -1;
     i2c_setup();
 
     xTaskCreate(taskBlink, "LED", 100, NULL, 2, &blink_handle);

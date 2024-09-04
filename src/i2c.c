@@ -9,7 +9,7 @@ void i2c_setup(void) {
                   GPIO_CNF_OUTPUT_ALTFN_OPENDRAIN, GPIO_I2C1_SCL | GPIO_I2C1_SDA); // Configurar pines para I2C
 
     i2c_peripheral_disable(I2C1); // Desactivar I2C1 antes de configurar
-    i2c_reset(I2C1); // Resetear I2C1
+    i2c_reset(); // Resetear I2C1
 
     i2c_set_standard_mode(I2C1); // Configurar modo estándar
     i2c_set_clock_frequency(I2C1, I2C_CR2_FREQ_36MHZ); // Configurar frecuencia del reloj a 36 MHz
@@ -80,14 +80,11 @@ void task_i2c(void *pvParameters) {
         i2c_write(0x00); // Enviar comando para solicitar la hora
         i2c_stop();
 
-        vTaskDelay(pdMS_TO_TICKS(100)); // Esperar a que el Arduino procese el comando
+        //vTaskDelay(pdMS_TO_TICKS(100)); // Esperar a que el Arduino procese el comando
 
-        i2c_start(I2C_SLAVE_ADDRESS, true); // Leer desde el Arduino
-        hour = i2c_read(true); // Leer la hora (último byte)
-        i2c_stop();
-
-        snprintf(buffer, sizeof(buffer), "Hora recibida: %d\n", hour);
-        UART_puts(USART1, buffer, pdMS_TO_TICKS(500));
+        //i2c_start(I2C_SLAVE_ADDRESS, true); // Leer desde el Arduino
+        //hour = i2c_read(true); // Leer la hora (último byte)
+        //i2c_stop();
 
         vTaskDelay(pdMS_TO_TICKS(1000)); // Esperar 1 segundo antes de la próxima solicitud
     }
@@ -95,20 +92,19 @@ void task_i2c(void *pvParameters) {
 
 void i2c_reset(void) {
     // Deshabilitar I2C
-    I2C1->CR1 &= ~I2C_CR1_PE;
+    I2C_CR1(I2C1) &= ~I2C_CR1_PE;
 
     // Esperar hasta que I2C esté deshabilitado
-    while (I2C1->CR1 & I2C_CR1_PE);
+    while (I2C_CR1(I2C1) & I2C_CR1_PE)
+        taskYIELD();
 
     // Restablecer el I2C
     if (I2C1 == I2C1) {
-        RCC->APB1RSTR |= RCC_APB1RSTR_I2C1RST; // Activar el reset
-        RCC->APB1RSTR &= ~RCC_APB1RSTR_I2C1RST; // Desactivar el reset
+        rcc_periph_reset_pulse(RST_I2C1);
     } else if (I2C1 == I2C2) {
-        RCC->APB1RSTR |= RCC_APB1RSTR_I2C2RST; // Activar el reset
-        RCC->APB1RSTR &= ~RCC_APB1RSTR_I2C2RST; // Desactivar el reset
+        rcc_periph_reset_pulse(RST_I2C2);
     }
 
     // Rehabilitar I2C
-    I2C1->CR1 |= I2C_CR1_PE;
+    I2C_CR1(I2C1) |= I2C_CR1_PE;
 }

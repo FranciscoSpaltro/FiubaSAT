@@ -124,24 +124,99 @@ docker attach fiubasat
   - Si el contenedor ya está en ejecución, el comando no hará nada.
 - Conecta la terminal actual al contenedor en ejecución llamado fiubasat
 
+```
+REM USB
+setlocal enabledelayedexpansion
+
+:: Inicializa variables
+set "STLINK_ID="
+
+:: Leer toda la salida en una variable
+for /f "tokens=*" %%i in ('usbipd list') do (
+    set "line=%%i"
+    echo !line! | findstr /c:"STM32 STLink" >nul
+    if not errorlevel 1 (
+        for /f "tokens=1" %%a in ("!line!") do set "STLINK_ID=%%a"
+    )
+)
+
+:: Verificar si se encontró el ST-Link
+if "%STLINK_ID%"=="" (
+    echo No se encontró el ST-Link. Asegúrate de que el dispositivo esté conectado.
+    exit /b 1
+)
+
+:: Comprobar si el ST-Link ya está compartido
+for /f "tokens=*" %%i in ('usbipd list') do (
+    echo %%i | findstr /c:"%STLINK_ID%" | findstr /c:"Shared" >nul
+    if not errorlevel 1 (
+        echo El ST-Link ya está compartido.
+        set "already_shared=true"
+    )
+)
+
+:: Si no está compartido, hacer bind
+if not defined already_shared (
+    echo Compartiendo ST-Link con BUSID: %STLINK_ID%
+    usbipd bind --busid %STLINK_ID%
+    if errorlevel 1 (
+        echo Error al compartir el ST-Link.
+        exit /b 1
+    )
+)
+
+:: Comprobar si el ST-Link ya está adjunto
+for /f "tokens=*" %%i in ('usbipd list') do (
+    echo %%i | findstr /c:"%STLINK_ID%" | findstr /c:"Attached" >nul
+    if not errorlevel 1 (
+        echo El ST-Link ya está adjunto.
+        set "already_attached=true"
+    )
+)
+
+:: Si no está adjunto, hacer attach
+if not defined already_attached (
+    echo Adjuntando ST-Link con BUSID: %STLINK_ID%
+    usbipd attach --wsl --busid %STLINK_ID%
+    if errorlevel 1 (
+        echo Error al adjuntar el ST-Link.
+        exit /b 1
+    )
+)
+
+echo ST-Link (%STLINK_ID%) está ahora compartido y adjunto correctamente.
+
+endlocal
+```
+- Busca el ID correspondiente al STM32 ST-Link
+- Lo comparte si aún no se hizo
+- Lo asocia si aún no se hizo
 ---
 ## Instrucciones
 ### Si aún no se construyó la imagen
 1. Si no se cuenta con el paquete *usbipd*, instalarlo desde [acá](https://github.com/dorssel/usbipd-win/releases) o desde la carpeta FiubaSAT/Drivers
-2. Ejecutar `build_container.bat`
-3. En Windows, abrir una terminal con permisos de administrador
-4. Ejecutar `usbipd list` para conocer el BUS ID del ST-LINK V2
-5. Si es la primera vez que se utiliza o el dispositivo no figura como "Shared" (porque se cambió de puerto, por ejemplo), ejecutar `usbipd bind --busid <ID>`
-6. Ejecutar `usbipd attach --wsl --busid <ID>`
+2. Ejecutar `./build_container`
+3. (En Windows) ejecutar `./attach_usb`
 
 > Observación: si no se va a utilizar el ST-LINK V2 en la sesión, alcanza con realizar solamente el paso 2
-
 ### Si ya se construyó la imagen anteriormente
 1. Si no se cuenta con el paquete *usbipd*, instalarlo desde [acá](https://github.com/dorssel/usbipd-win/releases) o desde la carpeta FiubaSAT/Drivers
-2. Ejecutar `run_container.bat`
-3. En Windows, abrir una terminal con permisos de administrador
-4. Ejecutar `usbipd list` para conocer el BUS ID del ST-LINK V2
-5. Si es la primera vez que se utiliza o el dispositivo no figura como "Shared" (porque se cambió de puerto, por ejemplo), ejecutar `usbipd bind --busid <ID>`
-6. Ejecutar `usbipd attach --wsl --busid <ID>`
+2. Ejecutar `./attach_usb`
+3. Ejecutar `./run_container`
 
-> Observación: si no se va a utilizar el ST-LINK V2 en la sesión, alcanza con realizar solamente el paso 2
+> Observación: si no se va a utilizar el ST-LINK V2 en la sesión, alcanza con realizar solamente el paso 3
+
+### Si se decidió no compartir el USB antes y se desea hacerlo manualmente:
+
+**Opción 1**
+
+1. Si no se cuenta con el paquete *usbipd*, instalarlo desde [acá](https://github.com/dorssel/usbipd-win/releases) o desde la carpeta FiubaSAT/Drivers
+2. Ejecutar el script `./attach_usb`
+
+**Opción 2** 
+
+1. Si no se cuenta con el paquete *usbipd*, instalarlo desde [acá](https://github.com/dorssel/usbipd-win/releases) o desde la carpeta FiubaSAT/Drivers
+2. En Windows, abrir una terminal con permisos de administrador
+3. Ejecutar `usbipd list` para conocer el BUS ID del ST-LINK V2
+4. Si es la primera vez que se utiliza o el dispositivo no figura como "Shared" (porque se cambió de puerto, por ejemplo), ejecutar `usbipd bind --busid <ID>`
+5. Ejecutar `usbipd attach --wsl --busid <ID>`

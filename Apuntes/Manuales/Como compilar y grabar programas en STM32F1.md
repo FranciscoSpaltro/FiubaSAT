@@ -10,7 +10,14 @@ Para el desarrollo, es necesario acceder a dispositivos USB que están físicame
 ---
 
 ### 2. Prerrequisitos
-1. Tener el ST-LINK V2 compartido y adjuntado al contenedor (ver instrucciones en [Como construir y ejecutar el Docker](https://github.com/fran855/FiubaSAT/blob/5e3dd43a80d1b997840d32e1bd523a2408d4fb46/Apuntes/Manuales/Como%20construir%20y%20ejecutar%20el%20Docker.md))
+1. Tener el ST-LINK V2 compartido y asociado al contenedor
+   
+- **Opción 1:** ejecutar `./attach_usb`
+
+- **Opción 2:** realizar el bind y/o attach (según corresponda) de forma manual. Ver instrucciones en [Como construir y ejecutar el Docker](https://github.com/fran855/FiubaSAT/blob/5e3dd43a80d1b997840d32e1bd523a2408d4fb46/Apuntes/Manuales/Como%20construir%20y%20ejecutar%20el%20Docker.md)
+
+   > Se puede comprobar la asociación utilizando el comando `lsusb` en WSL, habiendo instalado previamente el paquete *usbutils* [`apt-get update && apt-get install usbutils`]
+
 2. Si se quiere realizar las acciones desde PlatformIO, agregar al archivo *platformio.ini* la línea
 
     `upload_flags = -c set CPUTAPID 0x2ba01477`
@@ -63,7 +70,7 @@ Para el desarrollo, es necesario acceder a dispositivos USB que están físicame
    
    > Aclaración importante: al clonar este repositorio no se clona la librería libopencm3, indispensable para la compilación del proyecto. El Makefile cuenta con una instrucción adicional que verifica la existencia de este directorio y, si es necesario, lo clona. Luego, compila la librería (específicamente para la placa STM32F1 con el fin de ahorrar tiempo y memoria) y al final comienza a compilar el proyecto
 
-3. Recordando que el USB debe estar compartido y adjunto (se puede comprobar utilizando el comando `lsusb`, habiendo instalado previamente el paquete *usbutils* [`apt-get update && apt-get install usbutils`]), ejecutar el comando `make flash`
+3. Ejecutar el comando `make flash` (habiendo asociado previamente el usb)
 
    > Observación: la línea necesaria para grabar manualmente es  `openocd -f /usr/share/openocd/scripts/interface/stlink.cfg -f /usr/share/openocd/scripts/target/stm32f1x.cfg -c "program <nombre-programa> <direccion-memoria>" -c "shutdown"`. El nombre asignado fue *fiubasat* y la dirección de memoria, 0x08000000 
 

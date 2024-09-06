@@ -36,6 +36,7 @@ LDLIBS = -L../lib/libopencm3/lib -lopencm3_stm32f1
 OBJS = $(SOURCES:.c=.o)
 
 all: check_libopencm3 $(PROJECT_NAME).elf clean
+andflash: all flash
 
 check_libopencm3:
 	@if [ ! -d "../lib/libopencm3" ] || [ -z "$$(ls -A ../lib/libopencm3 2>/dev/null)" ]; then \
@@ -64,6 +65,6 @@ delete:
 	rm -f $(OBJS) $(PROJECT_NAME).elf $(PROJECT_NAME).bin
 
 flash:
-	openocd -f /usr/share/openocd/scripts/interface/stlink.cfg -f /usr/share/openocd/scripts/target/stm32f1x.cfg -c "program $(PROJECT_NAME).bin 0x08000000" -c "shutdown"
+	openocd -f /usr/share/openocd/scripts/interface/stlink.cfg -f /usr/share/openocd/scripts/target/stm32f1x.cfg -c "program $(PROJECT_NAME).bin 0x08000000 verify reset exit"
 
 .PHONY: all clean delete flash check_libopencm3

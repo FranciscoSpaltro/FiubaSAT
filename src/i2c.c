@@ -27,13 +27,12 @@ void i2c_wait_until_ready(void) {
 
 void i2c_start(uint8_t addr, bool read) {
     i2c_wait_until_ready();
-
     i2c_send_start(I2C1);
     while (!(I2C_SR1(I2C1) & I2C_SR1_SB)) {
         // Esperar hasta que el bit de Start esté establecido
         vTaskDelay(pdMS_TO_TICKS(10));
     }
-
+    print_uart("Start bit establecido\n\r");
     i2c_send_7bit_address(I2C1, addr, read ? I2C_READ : I2C_WRITE);
     while (!(I2C_SR1(I2C1) & I2C_SR1_ADDR)) {
         // Esperar hasta que el bit de Address esté establecido
@@ -42,15 +41,29 @@ void i2c_start(uint8_t addr, bool read) {
 
     // Limpiar la bandera de dirección
     (void)I2C_SR2(I2C1);
+    
 }
 
 void i2c_write(uint8_t data) {
     i2c_send_data(I2C1, data);
+    // Esperar hasta que se complete la transferencia de datos
     while (!(I2C_SR1(I2C1) & I2C_SR1_BTF)) {
-        // Esperar hasta que el Byte Transfer Finished
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(10)); // Espera de 10 ms
+    }
+
+    // Comprobar el bit de ACK después de la transferencia
+    if (I2C_SR1(I2C1) & I2C_SR1_AF) {
+        // No se recibió ACK del esclavo (NACK)
+        // Limpia la bandera de fallo de ACK
+        I2C_SR1(I2C1) &= ~I2C_SR1_AF;
+        // Manejar el error de NACK aquí (por ejemplo, reenviar el mensaje o detener la comunicación)
+        print_uart("No se recibio ACK\n\r");
+    } else {
+        // ACK recibido correctamente
+        print_uart("Se recibio ACK\n\r");
     }
 }
+
 
 uint8_t i2c_read(bool last) {
     if (last) {
@@ -72,21 +85,29 @@ void i2c_stop(void) {
 }
 
 void task_i2c(void *pvParameters) {
-    uint8_t hour;
+    uint8_t respuesta;
     char buffer[50]; // Ajusta el tamaño según sea necesario
-
+    int mensaje = 0;
+    
     for(;;) {
         i2c_start(I2C_SLAVE_ADDRESS, false); // Iniciar comunicación con el Arduino
-        i2c_write(0x00); // Enviar comando para solicitar la hora
+        print_uart("Comunicacion I2C iniciada\n\r");
+        i2c_write(mensaje);
+        print_uart("Mensaje enviado\n\r");
         i2c_stop();
 
-        //vTaskDelay(pdMS_TO_TICKS(100)); // Esperar a que el Arduino procese el comando
+
+        vTaskDelay(pdMS_TO_TICKS(100)); // Esperar a que el Arduino procese el comando
 
         //i2c_start(I2C_SLAVE_ADDRESS, true); // Leer desde el Arduino
-        //hour = i2c_read(true); // Leer la hora (último byte)
+        //respuesta = i2c_read(true); // Leer la hora (último byte)
         //i2c_stop();
-
         vTaskDelay(pdMS_TO_TICKS(1000)); // Esperar 1 segundo antes de la próxima solicitud
+        if(respuesta == 0) {
+            mensaje = 1; // Cambiar el comando para solicitar la fecha
+        } else {
+            mensaje = 0; // Cambiar el comando para solicitar la hora
+        }
     }
 }
 
@@ -107,4 +128,23 @@ void i2c_reset(void) {
 
     // Rehabilitar I2C
     I2C_CR1(I2C1) |= I2C_CR1_PE;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/******************************
+ * TESTING
+ * ***************************/
+ 
+ void print_uart(const char *s){
+    UART_puts(USART1, s, pdMS_TO_TICKS(500));
 }

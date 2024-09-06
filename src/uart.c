@@ -322,3 +322,4 @@ BaseType_t UART_semaphore_release(uint32_t usart_id) {
     
     return xSemaphoreGive(uart->semaphore);
 }
+

@@ -5,18 +5,23 @@
 #include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
+#include "semphr.h"
+#include "uart.h"
 
 #define I2C_SLAVE_ADDRESS 0x08 // Dirección del esclavo (Arduino)
 #define I2C_TIMEOUT_MS 1000   // Tiempo de espera en milisegundos
 
 void i2c_setup(void);
 void i2c_wait_until_ready(void);
-void i2c_start(uint8_t addr, bool read);
+bool i2c_start(uint8_t addr, bool read);
 void i2c_write(uint8_t data);
 uint8_t i2c_read(bool last);
 void i2c_stop(void);
 void task_i2c(void *pvParameters);
-void i2c_reset(void);
+void enqueue_i2c_data(uint8_t data, QueueHandle_t queue);
+uint8_t dequeue_i2c_data(QueueHandle_t queue);
+void task_i2c_tx(void *pvParameters);
+void task_i2c_rx(void *pvParameters);
 
 
 /******************************

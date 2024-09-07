@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "spi.h": "c",
+        "freertos.h": "c",
+        "gpio.h": "c",
+        "task.h": "c",
+        "nvic.h": "c",
+        "semphr.h": "c"
+    }
+}

@@ -27,15 +27,6 @@ void receiveEvent(int howMany) {
   while (Wire.available()) {
     int received = Wire.read();  // Lee el dato enviado por el maestro
 
-    if(received == 0){
-      Serial.println("0x00: enviar estado");
-      data_to_send = 0;
-    }
-
-    if(received == 1){
-      Serial.println("0x01: enviar ticks");
-      data_to_send = 1;
-    }
-    // Aquí puedes agregar lógica para manejar el dato recibido si es necesario
+    Serial.println(received);
   }
 }

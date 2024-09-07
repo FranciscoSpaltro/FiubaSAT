@@ -1,7 +1,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "uart.h"
-#include "i2c.h"
+//#include "i2c.h"
+#include "i2c2.h"
 
 #include "blink.h"
 #include "timers.h"
@@ -37,11 +38,9 @@ int main(void) {
     //xTaskCreate(task_i2c_rx, "I2C RX", 128, NULL, 3, NULL);
     xTaskCreate(task_i2c, "I2C Task", 128, NULL, 1, NULL);
     
-    UART_puts(USART1, "\n\r-------------------------------\n\r", pdMS_TO_TICKS(500));
-    
     // Iniciar el planificador de FreeRTOS
     vTaskStartScheduler();
-    vTaskDelay(pdMS_TO_TICKS(500));
+    
 
     while (1) {
         // El planificador de FreeRTOS no debería retornar aquí

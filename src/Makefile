@@ -16,7 +16,7 @@ SOURCES = \
 	blink.c \
 	test.c \
 	uart.c \
-	i2c.c \
+	i2c2.c \
 	../lib/rtos/heap_4.c \
 	../lib/rtos/list.c \
 	../lib/rtos/port.c \
@@ -67,4 +67,7 @@ delete:
 flash:
 	openocd -f /usr/share/openocd/scripts/interface/stlink.cfg -f /usr/share/openocd/scripts/target/stm32f1x.cfg -c "program $(PROJECT_NAME).bin 0x08000000 verify reset exit"
 
-.PHONY: all clean delete flash check_libopencm3
+reset:
+	openocd -f /usr/share/openocd/scripts/interface/stlink.cfg -f /usr/share/openocd/scripts/target/stm32f1x.cfg -c "init" -c "reset run" -c "exit"
+
+.PHONY: all clean delete flash check_libopencm3 reset

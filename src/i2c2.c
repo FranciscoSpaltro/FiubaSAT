@@ -1,4 +1,4 @@
-#include "i2c2.h"
+#include "i2c.h"
 
 SemaphoreHandle_t i2c_mutex;
 QueueHandle_t i2c_tx_queue;

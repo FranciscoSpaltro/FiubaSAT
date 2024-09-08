@@ -1,8 +1,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "uart.h"
-//#include "i2c.h"
-#include "i2c2.h"
+#include "i2c.h"
 
 #include "blink.h"
 #include "timers.h"

@@ -1,6 +1,6 @@
 #include <Wire.h>  // Biblioteca para comunicación I2C
 
-#define SLAVE_ADDRESS 0x08  // Dirección I2C del esclavo, debe coincidir con la del STM32
+#define SLAVE_ADDRESS 0x04  // Dirección I2C del esclavo, debe coincidir con la del STM32
 
 int data_to_send = 42;  // Dato que el Arduino enviará al maestro
 

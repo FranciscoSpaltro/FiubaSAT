@@ -1,7 +1,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "uart.h"
-#include "i2c.h"
+#include "i2c_unif.h"
 
 #include "blink.h"
 #include "timers.h"
@@ -29,13 +29,14 @@ int main(void) {
 
     blink_setup();
     if(UART_setup(USART1, 115200) != pdPASS) return -1;
-    i2c_setup();
+    uint32_t i2c_id = I2C1;
+    i2c_setup(i2c_id);
 
     xTaskCreate((TaskFunction_t)taskUART_transmit, "UART1 TX", 128, (void *)USART1, 2, NULL);
     xTaskCreate(taskBlink, "LED", 100, NULL, 2, &blink_handle);
-    xTaskCreate(task_i2c_tx, "I2C TX", 128, NULL, 3, NULL);
+    xTaskCreate(task_i2c_tx, "I2C TX", 128, (void *) i2c_id, 3, NULL);
     //xTaskCreate(task_i2c_rx, "I2C RX", 128, NULL, 3, NULL);
-    xTaskCreate(task_i2c, "I2C Task", 128, NULL, 1, NULL);
+    xTaskCreate(task_i2c, "I2C Task", 128, (void *) i2c_id, 1, NULL);
     
     // Iniciar el planificador de FreeRTOS
     vTaskStartScheduler();

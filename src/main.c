@@ -7,89 +7,77 @@
 #include <stdio.h>
 #include "semphr.h"
 #include "test.h"
+#include "spi_driver.h"
 
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
-
-// Handle para la tarea del parpadeo
-static TaskHandle_t blink_handle;
-
-static void taskUART1_GPS(uint32_t usart_id) {
-    uint16_t data;
-    for (;;) {
-        // Esperar a que el semáforo indique que hay datos disponibles
-        if (UART_semaphore_take(usart_id, portMAX_DELAY) == pdTRUE) {
-            // Procesar todos los datos en la cola
-            while (UART_receive(usart_id, &data, pdMS_TO_TICKS(100))) {
-                // Aquí puedes manejar el dato recibido (por ejemplo, almacenarlo o procesarlo)
-                UART_putchar(USART3, data, pdMS_TO_TICKS(100));
-            }
-            // Liberar el semáforo después de procesar los datos
-            UART_semaphore_release(usart_id);
-        }
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-}
-
-/* Acá estaría la tarea asignada al periférico conectado a la interfaz USART3 */
-static void taskUART3_receive(uint32_t usart_id) {
-    uint16_t data;
-    for (;;) {
-        // Esperar a que el semáforo indique que hay datos disponibles
-        if (UART_semaphore_take(usart_id, portMAX_DELAY) == pdTRUE) {
-            // Procesar todos los datos en la cola
-            while (UART_receive(usart_id, &data, pdMS_TO_TICKS(100))) {
-                // Aquí puedes manejar el dato recibido (por ejemplo, almacenarlo o procesarlo)
-                UART_putchar(USART3, data, pdMS_TO_TICKS(100));
-            }
-            // Liberar el semáforo después de procesar los datos
-            UART_semaphore_release(usart_id);
-        }
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-}
+#include <libopencm3/stm32/spi.h>
+#include <string.h>
 
 /* Handler en caso de que la aplicación cause un overflow del stack */
 void vApplicationStackOverflowHook(TaskHandle_t xTask __attribute__((unused)), char *pcTaskName __attribute__((unused))) {
 	for (;;);
 }
 
+
+static void uart_setup(void) ;
+static inline void uart_putc(char ch);
+void taskSPI_transmit(void *pvParameterss);
+
 /* Main loop donde arranca el programa */
+
 int main(void) {
-    // Setup main clock, using external 8MHz crystal 
-    rcc_clock_setup_in_hse_8mhz_out_72mhz();
+    rcc_clock_setup_in_hse_8mhz_out_72mhz(); // Blue Pill
 
-    // Inicialización del LED para el blink
-    blink_setup();
+    rcc_periph_clock_enable(RCC_GPIOA);
+    rcc_periph_clock_enable(RCC_GPIOC);
 
-    // Inicialización de UARTs con sus baudrates
-    if(UART_setup(USART1, 115200) != pdPASS) return -1;
-    if(UART_setup(USART2, 115200) != pdPASS) return -1;
-    if(UART_setup(USART3, 115200) != pdPASS) return -1;
+    // Configuración del LED en PC13
+    gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, GPIO13);
+    //uart_setup();       // Configuración del SPI
+    spi_setup();        // Configuración del SPI
 
-    // Crear tarea para parpadear el LED
-    xTaskCreate(taskBlink, "LED", 100, NULL, 2, &blink_handle);  // Crear tarea para parpadear el LED
-
-    // Creación de tareas genéricas para transmisión UART
-    xTaskCreate((TaskFunction_t)taskUART_transmit, "UART1 TX", 128, (void *)USART1, 2, NULL);
-    xTaskCreate((TaskFunction_t)taskUART_transmit, "UART2 TX", 128, (void *)USART2, 2, NULL);
-    xTaskCreate((TaskFunction_t)taskUART_transmit, "UART3 TX", 128, (void *)USART3, 2, NULL);
-
-    // Creación de tareas genéricas para recepción UART
-    xTaskCreate((TaskFunction_t)taskUART3_receive, "UART3 RX", 128, (void *)USART3, 2, NULL);
-    xTaskCreate((TaskFunction_t)taskUART1_GPS, "UART1 RX", 128, (void *)USART1, 2, NULL);
+    //spi_rx = xQueueCreate(256,sizeof(char));      //Creo la cola
     
-    // Crear tareas para Test
-    //xTaskCreate(taskTestUART_Semaphore, "Test_Semaphore", 100, NULL, 2, NULL);  // Crear tarea para Test
-    //xTaskCreate(taskTest, "Test", 100, NULL, 2, NULL);  // Crear tarea para Test
-    //xTaskCreate(taskPrintBuffer, "Print_buffer", 100, NULL, 2, NULL);  // Crear tarea para Test
-
-    // Start RTOS Task scheduler
-	vTaskStartScheduler();
-
-    // The task scheduler is blocking, so we should never come here...
-	for (;;);
+    gpio_set(GPIOC, GPIO13);        // PC13 = on
     
-	return 0;
+    
+    uint8_t received_data;
+
+    xTaskCreate(taskSPI_transmit,"SPI trasnmit", 500,NULL,configMAX_PRIORITIES-1,NULL);
+    
+    vTaskStartScheduler();
+    
+    for (;;);
+    
+    return 0;
 }
+
+
+
+static void uart_setup(void) {
+
+    rcc_periph_clock_enable(RCC_GPIOA);
+    rcc_periph_clock_enable(RCC_USART1);
+
+    // UART TX on PA9 (GPIO_USART1_TX)
+    gpio_set_mode(GPIOA,
+                  GPIO_MODE_OUTPUT_50_MHZ,
+                  GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
+                  GPIO_USART1_TX);
+
+    usart_set_baudrate(USART1, 38400);
+    usart_set_databits(USART1, 8);
+    usart_set_stopbits(USART1, USART_STOPBITS_1);
+    usart_set_mode(USART1, USART_MODE_TX);
+    usart_set_parity(USART1, USART_PARITY_NONE);
+    usart_set_flow_control(USART1, USART_FLOWCONTROL_NONE);
+    usart_enable(USART1);
+}
+
+
+static inline void uart_putc(char ch) {
+    usart_send_blocking(USART1, ch);
+}
+

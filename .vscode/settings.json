@@ -5,6 +5,8 @@
         "gpio.h": "c",
         "task.h": "c",
         "nvic.h": "c",
-        "semphr.h": "c"
+        "semphr.h": "c",
+        "rcc.h": "c",
+        "spi_driver.h": "c"
     }
 }

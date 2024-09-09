@@ -8,11 +8,10 @@
     4. PB7 (STM32) ---> R_PULL_UP2 ---> PA4 (NANO) [SDA]
 
 ### Tareas
-- Implementar I2C2
-- Unificar
 - Rutina para chequeo de salud de los dispositivos
+- Sacar los taskDelay, ver xTaskGetTickCount()
 
 ### Observaciones
 - En los casos de reconexión/retransmisión, ver de combinar el taskYIELD() con un xTaskGetTickCount() para hacer que no vuelva a probar hasta que pase determinado tiempo
-- Revisar si tienen que ser tareas o funciones: el rx en realidad lo tengo que solicitar desde el STM32. Tiene sentido que sean tareas que esté continuamente ejecutándose?
-- Investigar I2C paralelo
+- Vale la pena las interrupciones?
+- Revisar la variable global con la dirección del esclavo -> si hay más de un request como hago??

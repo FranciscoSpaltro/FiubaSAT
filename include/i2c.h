@@ -18,9 +18,10 @@ void i2c_wait_until_ready(uint32_t i2c_id);
 bool i2c_start(uint32_t i2c_id, uint8_t addr, bool read);
 void i2c_write(uint32_t i2c_id, uint8_t data);
 uint8_t i2c_read(uint32_t i2c_id, bool last);
-void task_i2c(void *pvParameters);
 void task_i2c_tx(void *pvParameters);
-void task_i2c_rx(void *pvParameters);
+void task_i2c_request(void *pvParameters);
+void test_write_i2c(void *pvParameters);
+void test_request_i2c(void *pvParameters);
 
 
 /******************************

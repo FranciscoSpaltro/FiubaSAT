@@ -16,6 +16,8 @@ typedef struct {
 static i2c_t i2c1;
 static i2c_t i2c2;
 
+static uint8_t slave_address_request = 0;
+
 static i2c_t * get_i2c(uint32_t i2c_id) {
     switch(i2c_id) {
         case I2C1:
@@ -199,13 +201,12 @@ void task_i2c_tx(void *pvParameters) {
 }
 
 
-void task_i2c_request(void *pvParameters) { // (!) REVISAR
-    i2c_t * i2c = get_i2c(I2C1);
-    // pvParameters va a tener la dirección del esclavo que se quiere solicitar
+void task_i2c_request(void *pvParameters) {
+    i2c_t * i2c = get_i2c((uint32_t) pvParameters);
     msg_t msg;
-    msg.addr = (uint8_t)pvParameters;
     for (;;) {
         if (xSemaphoreTake(i2c -> request, portMAX_DELAY) == pdTRUE){
+            msg.addr = slave_address_request;
             if (xSemaphoreTake(i2c -> mutex, portMAX_DELAY) == pdTRUE) {
                 i2c_start(i2c -> i2c_id, msg.addr, true);
                 msg.data = i2c_read(i2c -> i2c_id, true);
@@ -234,7 +235,7 @@ void test_write_i2c(void *pvParameters) {
         }
 
         msg.data++;
-        vTaskDelay(pdMS_TO_TICKS(5000)); // Esperar 5 segundos antes de la próxima solicitud
+        vTaskDelay(pdMS_TO_TICKS(2500)); // Esperar 5 segundos antes de la próxima solicitud
     }
 }
 
@@ -242,8 +243,9 @@ void test_request_i2c(void *pvParameters) {
     i2c_t * i2c = get_i2c(I2C1);
 
     for(;;) {
+        slave_address_request = (uint8_t) pvParameters;
         xSemaphoreGive(i2c -> request);
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Esperar 5 segundos antes de la próxima solicitud
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Esperar 1 segundo antes de la próxima solicitud
         // Imprimo el dato recibido
         i2c_t * i2c = get_i2c(I2C1);
         if(uxQueueMessagesWaiting(i2c -> rxq) == 0){

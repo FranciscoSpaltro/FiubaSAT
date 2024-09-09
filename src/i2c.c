@@ -174,24 +174,33 @@ uint8_t i2c_read(uint32_t i2c_id, bool last) {
 void task_i2c_tx(void *pvParameters) {
     i2c_t * i2c = get_i2c((uint32_t) pvParameters);
     msg_t msg;
+    const uint8_t max_retries = 10;
     for (;;) {
         // Verificar si hay datos en la cola con un tiempo de espera corto
         if (xQueueReceive(i2c -> txq, &msg, pdMS_TO_TICKS(10)) == pdPASS) {
-            // Esperar a obtener el mutex
-            if (xSemaphoreTake(i2c -> mutex, portMAX_DELAY) == pdTRUE) {
-                // Intentar iniciar la comunicación I2C
-                if (i2c_start(i2c->i2c_id, msg.addr, false)) {
-                    i2c_write(i2c->i2c_id, msg.data);
-                    i2c_send_stop(i2c->i2c_id);
+            uint8_t retries = 0;
+            bool success = false;
+            while(retries < max_retries && !success){
+                if (xSemaphoreTake(i2c -> mutex, portMAX_DELAY) == pdTRUE) {
+                    // Intentar iniciar la comunicación I2C
+                    if (i2c_start(i2c->i2c_id, msg.addr, false)) {
+                        i2c_write(i2c->i2c_id, msg.data);
+                        i2c_send_stop(i2c->i2c_id);
+                        success = true;
+                    } else {
+                        // La comunicación no se pudo establecer
+                        print_uart("Error: No se pudo establecer la comunicación I2C.\n\r");
+                    }                    
                 } else {
-                    // La comunicación no se pudo establecer
-                    print_uart("Error: No se pudo establecer la comunicación I2C.\n\r");
+                    print_uart("Error: No se pudo obtener el mutex.\n\r");
                 }
-
-                // Liberar el mutex después de completar la transmisión o manejo de error
+                retries++;
                 xSemaphoreGive(i2c -> mutex);
-            } else {
-                print_uart("Error: No se pudo obtener el mutex.\n\r");
+            }
+
+            if(!success){
+                print_uart("Error: No se pudo enviar el mensaje.\n\r");
+                vTaskDelay(pdMS_TO_TICKS(3000)); // Esperar 3 segundos antes de reintentar
             }
         }
 
@@ -201,18 +210,34 @@ void task_i2c_tx(void *pvParameters) {
 }
 
 
+
 void task_i2c_request(void *pvParameters) {
     i2c_t * i2c = get_i2c((uint32_t) pvParameters);
     msg_t msg;
+    const uint8_t max_retries = 10;
     for (;;) {
         if (xSemaphoreTake(i2c -> request, portMAX_DELAY) == pdTRUE){
             msg.addr = slave_address_request;
-            if (xSemaphoreTake(i2c -> mutex, portMAX_DELAY) == pdTRUE) {
-                i2c_start(i2c -> i2c_id, msg.addr, true);
-                msg.data = i2c_read(i2c -> i2c_id, true);
-                i2c_send_stop(i2c -> i2c_id);
-                xSemaphoreGive(i2c -> mutex); // Liberar el mutex
-                enqueue_i2c_msg(&msg, i2c -> rxq); // Encolar el dato recibido
+            uint8_t retries = 0;
+            bool success = false;
+            while(retries < max_retries && !success){
+                if (xSemaphoreTake(i2c -> mutex, portMAX_DELAY) == pdTRUE) {
+                    if(i2c_start(i2c -> i2c_id, msg.addr, true)){
+                        msg.data = i2c_read(i2c -> i2c_id, true);
+                        i2c_send_stop(i2c -> i2c_id);
+                        xSemaphoreGive(i2c -> mutex); // Liberar el mutex
+                        enqueue_i2c_msg(&msg, i2c -> rxq); // Encolar el dato recibido
+                        success = true;
+                    } else {
+                        print_uart("Error: No se pudo establecer la comunicación I2C.\n\r");
+                        xSemaphoreGive(i2c -> mutex); // Liberar el mutex
+                        retries++;
+                    }
+                }
+                if(!success){
+                    print_uart("Error: No se pudo enviar el mensaje.\n\r");
+                    vTaskDelay(pdMS_TO_TICKS(3000)); // Esperar 3 segundos antes de reintentar
+                }
             }
         }
 

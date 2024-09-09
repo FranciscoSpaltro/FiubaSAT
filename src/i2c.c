@@ -1,14 +1,11 @@
 #include "i2c.h"
 
-SemaphoreHandle_t i2c_mutex;
-QueueHandle_t i2c_tx_queue;
-QueueHandle_t i2c_rx_queue;
-
 typedef struct {
     uint32_t i2c_id;
     QueueHandle_t txq;
     QueueHandle_t rxq;
     SemaphoreHandle_t mutex;
+    SemaphoreHandle_t request;
 } i2c_t;
 
 typedef struct {
@@ -100,6 +97,7 @@ void i2c_setup(uint32_t i2c_id) {
 
     i2c -> txq = xQueueCreate(10, sizeof(msg_t)); // Cola para datos a enviar
     i2c -> rxq = xQueueCreate(10, sizeof(msg_t)); // Cola para datos recibidos
+    i2c -> request = xSemaphoreCreateBinary(); // Semáforo para solicitudes
 }
 
 void i2c_wait_until_ready(uint32_t i2c_id) {
@@ -201,18 +199,20 @@ void task_i2c_tx(void *pvParameters) {
 }
 
 
-void task_i2c_rx(void *pvParameters) { // (!) REVISAR
+void task_i2c_request(void *pvParameters) { // (!) REVISAR
     i2c_t * i2c = get_i2c(I2C1);
+    // pvParameters va a tener la dirección del esclavo que se quiere solicitar
     msg_t msg;
     msg.addr = (uint8_t)pvParameters;
     for (;;) {
-        // Esperar a obtener el mutex
-        if (xSemaphoreTake(i2c -> mutex, portMAX_DELAY) == pdTRUE) {
-            i2c_start(i2c -> i2c_id, msg.addr, true);
-            msg.data = i2c_read(i2c -> i2c_id, true);
-            i2c_send_stop(i2c -> i2c_id);
-            xSemaphoreGive(i2c -> mutex); // Liberar el mutex
-            enqueue_i2c_msg(&msg, i2c -> rxq); // Encolar el dato recibido
+        if (xSemaphoreTake(i2c -> request, portMAX_DELAY) == pdTRUE){
+            if (xSemaphoreTake(i2c -> mutex, portMAX_DELAY) == pdTRUE) {
+                i2c_start(i2c -> i2c_id, msg.addr, true);
+                msg.data = i2c_read(i2c -> i2c_id, true);
+                i2c_send_stop(i2c -> i2c_id);
+                xSemaphoreGive(i2c -> mutex); // Liberar el mutex
+                enqueue_i2c_msg(&msg, i2c -> rxq); // Encolar el dato recibido
+            }
         }
 
         taskYIELD();
@@ -220,7 +220,7 @@ void task_i2c_rx(void *pvParameters) { // (!) REVISAR
 }
 
 
-void task_write_i2c(void *pvParameters) {
+void test_write_i2c(void *pvParameters) {
     i2c_t * i2c = get_i2c(I2C1);
     msg_t msg;
     msg.addr = (uint8_t) pvParameters;
@@ -238,21 +238,22 @@ void task_write_i2c(void *pvParameters) {
     }
 }
 
-void task_read_i2c(void *pvParameters) {
+void test_request_i2c(void *pvParameters) {
     i2c_t * i2c = get_i2c(I2C1);
-    msg_t msg;
-    msg.addr = (uint8_t) pvParameters;
-    msg.data = 0;
-    
-    for(;;) {
-        if (uxQueueSpacesAvailable(i2c -> rxq) > 0) {
-            enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
-        } else {
-            print_uart("Espacio insuficiente\n\r");
-        }
 
-        msg.data++;
-        vTaskDelay(pdMS_TO_TICKS(5000)); // Esperar 5 segundos antes de la próxima solicitud
+    for(;;) {
+        xSemaphoreGive(i2c -> request);
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Esperar 5 segundos antes de la próxima solicitud
+        // Imprimo el dato recibido
+        i2c_t * i2c = get_i2c(I2C1);
+        if(uxQueueMessagesWaiting(i2c -> rxq) == 0){
+            print_uart("No hay datos en la cola\n\r");
+        } else {
+            msg_t msg = dequeue_i2c_msg(i2c -> rxq);
+            char buffer[50];
+            snprintf(buffer, 50, "Dato recibido: %d\n\r", msg.data);
+            print_uart(buffer);
+        }
     }
 }
 /******************************

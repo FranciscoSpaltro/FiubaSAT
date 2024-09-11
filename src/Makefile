@@ -16,7 +16,8 @@ SOURCES = \
 	blink.c \
 	test.c \
 	uart.c \
-	i2c.c \
+	circular_buffer.c \
+	NMEA.c \
 	../lib/rtos/heap_4.c \
 	../lib/rtos/list.c \
 	../lib/rtos/port.c \
@@ -29,7 +30,7 @@ CFLAGS = -std=c99 -Wall -Wextra -Wshadow -Wimplicit-function-declaration -Wredun
 	-Wmissing-prototypes -Wstrict-prototypes -fno-common -ffunction-sections -fdata-sections \
 	-Os -g -mthumb -mcpu=cortex-m3 -msoft-float -mfix-cortex-m3-ldrd -DSTM32F1 -flto $(INCLUDES)
 
-LDFLAGS = -T./stm32f103c8t6.ld -nostartfiles -Wl,--gc-sections -specs=nano.specs -specs=nosys.specs -Wl,--undefined=vTaskSwitchContext
+LDFLAGS = -T./stm32f103c8t6.ld -nostartfiles -Wl,--gc-sections -specs=nano.specs -specs=nosys.specs -Wl,--undefined=vTaskSwitchContext -lm
 
 LDLIBS = -L../lib/libopencm3/lib -lopencm3_stm32f1
 

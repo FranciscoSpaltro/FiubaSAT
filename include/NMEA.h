@@ -7,7 +7,14 @@
 
 #ifndef INC_NMEA_H_
 #define INC_NMEA_H_
+#include "FreeRTOS.h"
+#include "NMEA.h"
+#include "stdint.h"
+#include "stdlib.h"
+#include "string.h"
+#include "math.h"
 
+#include "uart.h"
 
 typedef struct {
 	int hour;

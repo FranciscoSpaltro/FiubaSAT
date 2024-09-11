@@ -6,14 +6,7 @@
  */
 
 
-#include "FreeRTOS.h"
 #include "NMEA.h"
-#include "stdint.h"
-#include "stdlib.h"
-#include "string.h"
-#include "math.h"
-
-#include "uart.h"
 
 int GMT = +530;
 

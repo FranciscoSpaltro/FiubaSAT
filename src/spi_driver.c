@@ -3,76 +3,179 @@
 #include <libopencm3/stm32/rcc.h>
 #include <string.h>
 
-QueueHandle_t SPI1_rxq; //Creo la cola de recepcion
-QueueHandle_t SPI1_txq; //Creo la cola de recepcion
-QueueHandle_t SPI2_rxq; //Creo la cola de recepcion
-QueueHandle_t SPI2_txq; //Creo la cola de recepcion
-
 #define SPI_SIZE_BUFFER 256  // Queues size
+#define DEBUG_PLOTTING
 
-void spi_setup(void) {
-    SPI1_rxq = xQueueCreate(SPI_SIZE_BUFFER, sizeof(uint16_t)); // Crea la cola de recepción
-    SPI1_txq = xQueueCreate(SPI_SIZE_BUFFER, sizeof(uint16_t)); // Crea la cola de transmisión
+typedef struct {
+    uint32_t SPI_id;  // SPI_id 
+    QueueHandle_t SPI_txq;  // Cola de transmisión
+    QueueHandle_t SPI_rxq;  // Cola de recepción donde se bufferean los datos
+    SemaphoreHandle_t mutex;  // Mutex para protección de acceso
+} spi_t;
 
-    rcc_periph_clock_enable(RCC_SPI1); //Enable the clock for SPI1
-    gpio_set_mode(
-        GPIOA,
-        GPIO_MODE_OUTPUT_50_MHZ,
-        GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
-        GPIO4 | GPIO5 | GPIO7 // NSS=PA4, SCK=PA5, MOSI=PA7
-    );
+// Definición de estructuras SPI_t
+static spi_t spi1;
+static spi_t spi2;
 
-    gpio_set_mode(
-        GPIOA,
-        GPIO_MODE_INPUT,
-        GPIO_CNF_INPUT_FLOAT,
-        GPIO6 // MISO=PA6
-    );
+//Prototipos de funciones
+static spi_t *get_spi(uint32_t SPI_id);
+static BaseType_t spi_init(spi_t *spi, uint32_t SPI_id);
 
-    //spi_reset(SPI1);
-    
-    spi_init_master(
-        SPI1,
-        SPI_CR1_BAUDRATE_FPCLK_DIV_256,     //Se debe tener en cuenta la maxima frecuencia de operacion de APB1 y APB2
-        SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,    //SCK en estado bajo en el estado inactivo (IDLE)
-        SPI_CR1_CPHA_CLK_TRANSITION_1,      //Determina la fase del CLK (en que flanco se captura)
-        SPI_CR1_DFF_8BIT,                   //Indica el largo de palabra a utilizar
-        SPI_CR1_MSBFIRST                    //Se transmite el MSB primero
-    );
-
-    spi_disable_software_slave_management(SPI1);    //Desactivo el manejo del NSS por software
-    spi_enable_ss_output(SPI1);    //Activo el manejo del NSS por hardware (SPI PHP)
-    spi_enable(SPI1);                  
-}
-
-void SPI_transmit(uint32_t 	SPI_id, QueueHandle_t SPI_txq, TickType_t xTicksToWait){
-    uint16_t ch = 0;
-
-    while (xQueueReceive(SPI_txq, &ch, xTicksToWait) == pdPASS) {
-        spi_send(SPI_id, ch);        //Escribe el registro una ves que la transferencia actual haya finalizado (SPI Data Write with Blocking)
-        vTaskDelay(100);
+// Manejadores de SPIs
+static spi_t *get_spi(uint32_t SPI_id) {
+    switch (SPI_id) {
+        case SPI1: return &spi1;
+        case SPI2: return &spi2;
+        default: return NULL;
     }
 }
 
-BaseType_t SPI_receive(uint32_t SPI_id, QueueHandle_t SPI_rxq, int cant_elementos, TickType_t xTicksToWait) {
+void spi_setup(uint32_t SPI_id) {
+
+    spi_t *spi = get_spi(SPI_id);       //Obtengo estructura spi_t en base al SPI_id
+    
+    if (SPI_id == SPI1){
+        rcc_periph_clock_enable(RCC_SPI1); //Enable the clock for SPI1
+
+        gpio_set_mode(
+            GPIOA,
+            GPIO_MODE_OUTPUT_50_MHZ,
+            GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
+            GPIO4 | GPIO5 | GPIO7 // NSS=PA4, SCK=PA5, MOSI=PA7
+        );
+
+        gpio_set_mode(
+            GPIOA,
+            GPIO_MODE_INPUT,
+            GPIO_CNF_INPUT_FLOAT,
+            GPIO6 // MISO=PA6
+        );
+
+        //spi_reset(SPI1);
+        
+        spi_init_master(
+            SPI1,
+            SPI_CR1_BAUDRATE_FPCLK_DIV_256,     //Se debe tener en cuenta la maxima frecuencia de operacion de APB1 y APB2
+            SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,    //SCK en estado bajo en el estado inactivo (IDLE)
+            SPI_CR1_CPHA_CLK_TRANSITION_1,      //Determina la fase del CLK (en que flanco se captura)
+            SPI_CR1_DFF_8BIT,                   //Indica el largo de palabra a utilizar
+            SPI_CR1_MSBFIRST                    //Se transmite el MSB primero
+        );
+        if(spi_init(spi, SPI1) != pdPASS) return pdFAIL;
+    }
+
+    else if (SPI_id == SPI2){
+        rcc_periph_clock_enable(RCC_SPI2); //Enable the clock for SPI1
+        gpio_set_mode(
+            GPIOB,
+            GPIO_MODE_OUTPUT_50_MHZ,
+            GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
+            GPIO12 | GPIO13 | GPIO15 // PB12=NSS2 PB13=SCK2 PB15=MOSI2 
+        );
+
+        gpio_set_mode(
+            GPIOB,
+            GPIO_MODE_INPUT,
+            GPIO_CNF_INPUT_FLOAT,
+            GPIO12 // MISO2=PB14
+        );
+
+        //spi_reset(SPI2);
+        
+        spi_init_master(
+            SPI2,
+            SPI_CR1_BAUDRATE_FPCLK_DIV_256,     //Se debe tener en cuenta la maxima frecuencia de operacion de APB1 y APB2
+            SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,    //SCK en estado bajo en el estado inactivo (IDLE)
+            SPI_CR1_CPHA_CLK_TRANSITION_1,      //Determina la fase del CLK (en que flanco se captura)
+            SPI_CR1_DFF_8BIT,                   //Indica el largo de palabra a utilizar
+            SPI_CR1_MSBFIRST                    //Se transmite el MSB primero
+        );
+
+        if(spi_init(spi, SPI2) != pdPASS) return pdFAIL;
+        
+    }
+
+    // Me puedo desentender del codigo
+
+    spi_disable_software_slave_management(spi->SPI_id);    //Desactivo el manejo del NSS por software
+    spi_enable_ss_output(spi->SPI_id);    //Activo el manejo del NSS por hardware (SPI PHP)
+    spi_enable(spi->SPI_id);                  
+}
+
+// Inicialización de SPI
+static BaseType_t spi_init(spi_t *spi, uint32_t SPI_id) {
+
+    spi->SPI_id = SPI_id;  // Asigna el SPI_id correspondiente
+
+    spi->SPI_rxq = xQueueCreate(SPI_SIZE_BUFFER, sizeof(uint16_t)); // Crea la cola de recepción
+    if (spi->SPI_rxq == NULL) return pdFAIL;
+
+    spi->SPI_txq = xQueueCreate(SPI_SIZE_BUFFER, sizeof(uint16_t)); // Crea la cola de transmisión
+        
+    if (spi->SPI_txq == NULL) {
+        vQueueDelete(spi->SPI_rxq);
+        return pdFAIL;
+    }
+
+    spi->mutex = xSemaphoreCreateMutex();
+
+    if (spi->mutex == NULL) {
+        vQueueDelete(spi->SPI_txq);
+        vQueueDelete(spi->SPI_rxq);
+        return pdFAIL;
+    }
+
+    xSemaphoreGive(spi->mutex);
+
+    return pdPASS;
+}
+
+void SPI_transmit(uint32_t SPI_id, TickType_t xTicksToWait) {
+    spi_t *spi = get_spi(SPI_id);
+    if (spi == NULL) return;
+
+    // Intentar tomar el mutex con un timeout de 100ms
+    if (xSemaphoreTake(spi->mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        uint16_t ch = 0;
+
+        // Procesar la cola de transmisión mientras haya datos
+        while (xQueueReceive(spi->SPI_txq, &ch, xTicksToWait) == pdPASS) {
+            // Transmitir el dato por SPI (bloquea hasta que finalice)
+            spi_send(SPI_id, ch);
+
+            // Para debugging, retraso opcional (puede ajustarse o eliminarse)
+            #ifdef DEBUG_PLOTTING
+            vTaskDelay(pdMS_TO_TICKS(100));  // Retraso para debugging con Arduino
+            #endif
+        }
+
+        // Liberar el mutex después de finalizar la transmisión
+        xSemaphoreGive(spi->mutex);
+    } else {
+        // Error al tomar el mutex (posible timeout)
+        // Manejar el error si es necesario
+    }
+}
+
+BaseType_t SPI_receive(uint32_t SPI_id, TickType_t xTicksToWait) {
     BaseType_t status = pdPASS;  // Para controlar si todas las transmisiones son exitosas
     uint16_t ch = 0;
+    
+    spi_t *spi = get_spi(SPI_id);
+    if (spi == NULL) return pdFAIL;
 
-    for (int i = 0; i < cant_elementos; i++) {
-        ch = spi_read(SPI_id);  // Leer un elemento del SPI
+    ch = spi_read(SPI_id);  // Leer un elemento del SPI
 
-        // Enviar el dato a la cola. Si falla, se sale del loop
-        if (xQueueSendToBack(SPI_rxq, &ch, xTicksToWait) != pdPASS) {
-            status = pdFAIL;
-            break;  // Si falla, no seguimos intentando
-        }
+    // Enviar el dato a la cola. Si falla, se sale del loop
+    if (xQueueSendToBack(spi->SPI_rxq, &ch, xTicksToWait) != pdPASS) {
+        status = pdFAIL;
+        //Ver manejo de error
     }
 
     return status;  // Devolver el estado, pdPASS si todos los elementos fueron encolados
 }
 
-
-void taskSPI_transmit(void *pvParameters) {
+void taskSPI1_transmit(void *pvParameters) {
     char *cadena = "Prueba envio SPI1\n";
     int length = strlen(cadena);
     uint16_t data[length];  // Array de uint16_t para almacenar los datos
@@ -80,34 +183,71 @@ void taskSPI_transmit(void *pvParameters) {
     // Convertir cada carácter a uint16_t
     for (int i = 0; i < length; i++) {
         data[i] = (uint16_t)cadena[i];  // Conversión de tipo en C
+        enqueue_SPI_data(SPI1, data[i]);
     }
-    enqueue_SPI_data(data, length, SPI1_txq);
+    
     for (;;) {
-        SPI_transmit(SPI1, SPI1_txq, pdMS_TO_TICKS(100));
-        enqueue_SPI_data(data, length, SPI1_txq);
+        SPI_transmit(SPI1, pdMS_TO_TICKS(100));
+
+        //Vuelvo a encolar los datos
+        for (int i = 0; i < length; i++){
+            enqueue_SPI_data(SPI1, data[i]);
+        };
+        
         vTaskDelay(pdMS_TO_TICKS(500)); // Para darle tiempo a arduino a imprimir
     }
 }
 
+/*
+void taskSPI2_transmit(void *pvParameters) {
+    char *cadena = "Prueba envio SPI2\n";
+    int length = strlen(cadena);
+    uint16_t data[length];  // Array de uint16_t para almacenar los datos
 
-void enqueue_SPI_data(uint16_t* data, int length, QueueHandle_t SPI_queue) {
+    // Convertir cada carácter a uint16_t
     for (int i = 0; i < length; i++) {
-        // Intentar encolar cada elemento del vector
-        if (xQueueSend(SPI_queue, &data[i], portMAX_DELAY) != pdPASS) {
-            // Manejar el error de cola aquí
-            //print_uart("Error al encolar datos SPI\n\r");
-            break;  // Salir si hay un error
-        }
+        data[i] = (uint16_t)cadena[i];  // Conversión de tipo en C
+    }
+    enqueue_SPI_data(data, length, SPI2_txq);
+    for (;;) {
+        SPI_transmit(SPI2, SPI2_txq, pdMS_TO_TICKS(100));
+        enqueue_SPI_data(data, length, SPI2_txq);
+        vTaskDelay(pdMS_TO_TICKS(500)); // Para darle tiempo a arduino a imprimir
     }
 }
 
+void taskSPI2_receive(void *pvParameters) {
+    int length = spi_xfer(SPI2,'R');
+    for (;;) {
+        SPI_receive(SPI2, SPI2_rxq,length, pdMS_TO_TICKS(100)); //Recibe length cantidad de datos
+        Queue_send(SPI2_rxq , SPI2_txq);
+        usart_transmit(SPI2, SPI2_txq,pdMS_TO_TICKS(100));         
+    }
+}
 
-uint8_t dequeue_i2c_data(QueueHandle_t queue) {
-    uint8_t data;
-    if (xQueueReceive(queue, &data, portMAX_DELAY) != pdPASS) {
+*/
+
+
+// Implementación de la función enqueue_SPI_data
+BaseType_t enqueue_SPI_data(uint32_t SPI_id, uint16_t data) {
+    spi_t *spi = get_spi(SPI_id);  // Obtiene la estructura spi_t en base al SPI_id
+    
+    if (spi == NULL) {
+        // Manejo de error si no se puede obtener la estructura spi_t
+        //print_uart("Error: SPI_id no válido\n\r");
+        return pdFAIL;
+    }
+
+    // Intentar encolar el dato
+    if (xQueueSend(spi->SPI_txq, &data, portMAX_DELAY) != pdPASS) {
         // Manejar el error de cola aquí
-        print_uart("Error al desencolar datos SPI\n\r");
+        //print_uart("Error al encolar datos SPI\n\r");
+        return pdFAIL;
     }
-    return data;
+
+    // Si todo salió bien, devolvemos pdPASS
+    return pdPASS;
 }
+
+
 

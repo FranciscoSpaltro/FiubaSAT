@@ -8,10 +8,11 @@
 #include <queue.h>
 #include "semphr.h"
 
-void spi_setup(void);
-void taskSPI_transmit_receive(void *args __attribute__((unused)));
-void SPI_transmit(uint32_t 	SPI_id, QueueHandle_t SPI_txq, TickType_t xTicksToWait);
-BaseType_t SPI_receive(uint32_t SPI_id, QueueHandle_t SPI_rxq, int cant_elementos, TickType_t xTicksToWait);
-
+void spi_setup(uint32_t SPI_id);
+void taskSPI1_transmit(void *pvParameters);
+void SPI_transmit(uint32_t SPI_id, TickType_t xTicksToWait);
+BaseType_t SPI_receive(uint32_t SPI_id, TickType_t xTicksToWait);
+BaseType_t enqueue_SPI_data(uint32_t SPI_id ,uint16_t data);
+void spi_setup(uint32_t SPI_id);
 
 #endif

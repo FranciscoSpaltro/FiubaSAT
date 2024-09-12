@@ -36,11 +36,12 @@ int main(void) {
     xTaskCreate((TaskFunction_t)taskUART_transmit, "UART1 TX", 128, (void *)USART1, 2, NULL);
     xTaskCreate(taskBlink, "LED", 100, NULL, 2, &blink_handle);
 
-    xTaskCreate(task_i2c_tx, "I2C TX", 128, (void *) I2C1, 3, NULL);
-    xTaskCreate(task_i2c_request, "I2C RQT", 128, (void *) I2C1, 3, NULL);
-    xTaskCreate(test_request_i2c, "I2C TX", 128, (void *) 0x04, 3, NULL);
-    xTaskCreate(test_write_i2c, "I2C TX", 128, (void *) 0x04, 3, NULL);
-    xTaskCreate(test_write_i2c, "I2C RQT", 128, (void *) 0x08, 3, NULL);
+    xTaskCreate(task_i2c_tx, "I2C TX", 128, (void *) I2C2, 3, NULL);
+    //xTaskCreate(task_i2c_request, "I2C RQT", 128, (void *) I2C1, 3, NULL);
+    //xTaskCreate(test_request_i2c, "I2C TX", 128, (void *) 0x04, 3, NULL);
+    //xTaskCreate(test_write_i2c, "I2C TX", 128, (void *) 0x04, 3, NULL);
+    xTaskCreate(task_init_lcd, "I2C RQT", 128, NULL, 3, NULL);
+    xTaskCreate(test_lcd, "I2C TX", 128, NULL, 3, NULL);
     
     // Iniciar el planificador de FreeRTOS
     vTaskStartScheduler();

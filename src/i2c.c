@@ -283,10 +283,88 @@ void test_request_i2c(void *pvParameters) {
         }
     }
 }
+
+void task_init_lcd(void *pvParameters) {
+    lcd_send_cmd(0x03); // Iniciar en modo 8 bits
+    vTaskDelay(pdMS_TO_TICKS(5)); // Esperar al menos 5 ms
+    lcd_send_cmd(0x03); // Repetir
+    vTaskDelay(pdMS_TO_TICKS(5)); // Esperar al menos 5 ms
+    lcd_send_cmd(0x03); // Tercer vez
+    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
+    lcd_send_cmd(0x02); // Pasar a modo 4 bits
+    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
+
+    // Comandos de inicialización del LCD
+    lcd_send_cmd(0x28); // Configuración de función
+    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
+    lcd_send_cmd(0x08); // Apagar display
+    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
+    lcd_send_cmd(0x01); // Limpiar display
+    vTaskDelay(pdMS_TO_TICKS(2));
+    lcd_send_cmd(0x04);
+    vTaskDelay(pdMS_TO_TICKS(2)); // Esperar al menos 2 ms
+    lcd_send_cmd(0x06); // Modo de entrada
+    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
+    lcd_send_cmd(0x0C); // Encender display, sin cursor
+    vTaskDelete(NULL);
+}
+
+void test_lcd(void *pvParameters){
+    vTaskDelay(500);
+    lcd_send_data("A");
+    lcd_send_data("B");
+    lcd_send_data("C");
+    vTaskDelete(NULL);
+}
 /******************************
  * TESTING
  * ***************************/
  
 void print_uart(const char *s){
     UART_puts(USART1, s, pdMS_TO_TICKS(500));
+}
+
+void lcd_send_cmd(uint8_t cmd) {
+    i2c_t * i2c = get_i2c(I2C2);
+    msg_t msg;
+    msg.addr = (uint8_t) I2C_SLAVE_ADDRESS;
+    
+    uint8_t data_u, data_l;
+    data_u = (cmd & 0xF0);        // Obtener los 4 bits más significativos
+    data_l = ((cmd << 4) & 0xF0); // Obtener los 4 bits menos significativos
+    
+    // Transmitir el comando en dos partes (modo 4 bits)
+    msg.data = data_u | 0x0C;  // E = 1, RS = 0, RW = 0
+    enqueue_i2c_msg(&msg, i2c -> txq);
+    msg.data = data_u | 0x08;  // E = 0, RS = 0, RW = 0
+    enqueue_i2c_msg(&msg, i2c -> txq);
+
+    msg.data = data_l | 0x0C;  // E = 1, RS = 0, RW = 0
+    enqueue_i2c_msg(&msg, i2c -> txq);
+    msg.data = data_l | 0x08;  // E = 0, RS = 0, RW = 0
+    enqueue_i2c_msg(&msg, i2c -> txq);
+
+    // Agregar tiempo de espera apropiado (similar a Arduino)
+    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
+}
+
+void lcd_send_data(uint8_t cmd) {
+    // Separar los 4 bits más altos y 4 bits más bajos del comando
+    i2c_t * i2c = get_i2c(I2C2);
+    msg_t msg;
+    msg.addr = (uint8_t) I2C_SLAVE_ADDRESS;
+
+    uint8_t data_u, data_l;
+    data_u = (cmd & 0xF0);        // Obtener los 4 bits más significativos
+    data_l = ((cmd << 4) & 0xF0); // Obtener los 4 bits menos significativos
+    
+    msg.data = data_u | 0x0D;  // E = 1, RS = 0, RW = 0 -> 0bxxxx1100
+    enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
+    msg.data = data_u | 0x09;  // E = 0, RS = 0, RW = 0 -> 0bxxxx1000
+    enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
+
+    msg.data = data_l | 0x0D;  // E = 1, RS = 0, RW = 0 -> 0bxxxx1100
+    enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
+    msg.data = data_l | 0x09;  // E = 0, RS = 0, RW = 0 -> 0bxxxx1000
+    enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
 }

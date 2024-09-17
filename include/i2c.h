@@ -9,6 +9,7 @@
 #include "task.h"
 #include "semphr.h"
 #include "uart.h"
+#include "portmacro.h"
 
 #define I2C_SLAVE_ADDRESS 0x04 // Dirección del esclavo (Arduino)
 #define I2C_TIMEOUT_MS 1000   // Tiempo de espera en milisegundos

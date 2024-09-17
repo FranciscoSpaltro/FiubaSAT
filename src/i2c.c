@@ -1,5 +1,14 @@
-#include "i2c_copy.h"
+#include "i2c.h"
 
+/**
+ * @brief Estructura para manejar el periférico I2C
+ * 
+ * @param i2c_id Identificador del periférico I2C (I2C1 o I2C2)
+ * @param txq Cola de mensajes para transmitir datos
+ * @param rxq Cola de mensajes para recibir datos
+ * @param mutex Semáforo para controlar el acceso a los registros del periférico
+ * @param request Semáforo binario para solicitar acceso al periférico
+ */
 typedef struct {
     uint32_t i2c_id;
     QueueHandle_t txq;
@@ -8,6 +17,13 @@ typedef struct {
     SemaphoreHandle_t request;
 } i2c_t;
 
+/**
+ * @brief Estructura para manejar un mensaje I2C
+ * 
+ * @param addr Dirección I2C del esclavo
+ * @param data Datos a enviar
+ * @param request true si es una solicitud
+ */
 typedef struct {
     uint8_t addr;  // Dirección I2C del esclavo
     uint8_t data;  // Datos a enviar
@@ -16,6 +32,13 @@ typedef struct {
 
 static i2c_t i2c1;
 static i2c_t i2c2;
+
+/**
+ * @brief Obtiene el handler de I2C basado en el identificador de 32 bits del periférico
+ * 
+ * @param i2c_id Identificador del periférico I2C (I2C1 o I2C2)
+ * @return Puntero a la estructura que maneja el periférico I2C correspondiente o NULL si no se encuentra
+ */
 
 static i2c_t * get_i2c(uint32_t i2c_id) {
     switch(i2c_id) {
@@ -28,19 +51,31 @@ static i2c_t * get_i2c(uint32_t i2c_id) {
     }
 }
 
-// Función para encolar un mensaje msg en la cola queue
-// Retorna true si el mensaje fue encolado, false si la cola está llena o hubo un error
-static bool enqueue_i2c_msg(msg_t *msg, QueueHandle_t queue) {
+
+/**
+ * @brief Encola un mensaje en la cola especificada
+ * 
+ * @param msg Puntero al mensaje a encolar [REVISAR] (!)
+ * @param queue Cola donde se encolará el mensaje
+ * @return pdPASS si el mensaje fue encolado, pdFALSE si la cola está llena o hubo un error
+ */
+static BaseType_t enqueue_i2c_msg(msg_t *msg, QueueHandle_t queue) {
     if (uxQueueSpacesAvailable(queue) == 0)
-        return false;
+        return pdFALSE;
 
     if (xQueueSend(queue, msg, pdMS_TO_TICKS(10)) != pdPASS) {
-        false;
+        pdFALSE;
     }
+    return pdPASS;
 }
 
-// Función para desencolar un mensaje de la cola queue
-// Retorna el mensaje desencolado o un mensaje con addr = 0 y data = 0 si hubo un error
+
+/**
+ * @brief Desencola un mensaje de la cola especificada
+ * 
+ * @param queue Cola de mensajes
+ * @return Mensaje desencolado
+ */
 static msg_t dequeue_i2c_msg(QueueHandle_t queue) {
     msg_t msg;
     if (xQueueReceive(queue, &msg, pdMS_TO_TICKS(10)) != pdPASS) {
@@ -51,10 +86,14 @@ static msg_t dequeue_i2c_msg(QueueHandle_t queue) {
     return msg;
 }
 
-// Función para configurar el periférico I2C
-// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
-// Retorna true si la configuración fue exitosa, false si hubo un error
-bool i2c_setup(uint32_t i2c_id) {
+
+/**
+ * @brief Configura y habilita el periférico I2C especificado [REVISAR: habilitacion por separado?] (!)
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @return pdPASS si la configuración fue exitosa, pdFALSE si hubo un error
+ */
+BaseType_t i2c_setup(uint32_t i2c_id) {
     i2c_t * i2c = get_i2c(i2c_id);
     
     if(i2c_id == I2C1){
@@ -94,22 +133,27 @@ bool i2c_setup(uint32_t i2c_id) {
     }
     
     if ((i2c -> mutex = xSemaphoreCreateMutex()) == NULL)
-        return false;
+        return pdFALSE;
 
     if ((i2c -> request = xSemaphoreCreateBinary()) == NULL)
-        return false;
+        return pdFALSE;
 
     if((i2c -> txq = xQueueCreate(10, sizeof(msg_t))) == NULL)
-        return false;
+        return pdFALSE;
 
     if((i2c -> rxq = xQueueCreate(10, sizeof(msg_t))) == NULL)
-        return false;
+        return pdFALSE;
     
-    return true;
+    return pdPASS;
 }
 
-// Función para esperar hasta que el periférico I2C esté listo
-// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
+
+/**
+ * @brief Espera hasta que el periférico I2C especificado esté listo
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @return void
+ */
 void i2c_wait_until_ready(uint32_t i2c_id) {
     while (I2C_SR2(i2c_id) & I2C_SR2_BUSY) {
         taskYIELD();
@@ -117,11 +161,15 @@ void i2c_wait_until_ready(uint32_t i2c_id) {
 }
 
 /************************ PROCESO DE INICIO DE COMUNICACIÓN I2C ************************/
-// Función para iniciar una comunicación I2C
-// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
-// addr: Dirección del esclavo I2C
-// read: true si se va a leer, false si se va a escribir
-bool i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
+/**
+ * @brief Inicia una comunicación I2C con el esclavo especificado en modo lectura/escritura
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param addr Dirección de 8 bits del esclavo I2C
+ * @param read true si se va a leer, false si se va a escribir
+ * @return pdPASS si la comunicación fue exitosa, pdFALSE si hubo un error
+ */
+static BaseType_t i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
     i2c_wait_until_ready(i2c_id);
     i2c_send_start(i2c_id);
 
@@ -138,7 +186,7 @@ bool i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
         if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
             I2C_SR1(i2c_id) &= ~I2C_SR1_AF; // Limpiar bandera de fallo de ACK
             i2c_send_stop(i2c_id); // Detener comunicación
-            return false; // Indicar que la comunicación falló
+            return pdFALSE; // Indicar que la comunicación falló
         }
         taskYIELD();
     }
@@ -146,7 +194,7 @@ bool i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
     // Limpiar la bandera de dirección
     (void)I2C_SR2(i2c_id);
 
-    return true; // Indicar que la comunicación fue exitosa
+    return pdPASS; // Indicar que la comunicación fue exitosa
 }
 
 
@@ -166,11 +214,14 @@ bool i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
 // 5. Enviar un STOP para finalizar la comunicación
 
 
-// Función para enviar un byte de datos por I2C (modo WRITE)
-// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
-// data: Byte de datos a enviar
-// Retorna true si el byte fue enviado, false si hubo un error
-bool i2c_write(uint32_t i2c_id, uint8_t data) {
+/**
+ * @brief Envia un byte de datos por I2C en modo WRITE
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param data Byte de datos a enviar
+ * @return pdPASS si el byte fue enviado, pdFALSE si hubo un error
+ */
+BaseType_t i2c_write(uint32_t i2c_id, uint8_t data) {
     i2c_send_data(i2c_id, data);
     // Esperar hasta que se complete la transferencia de datos
     while (!(I2C_SR1(i2c_id) & I2C_SR1_BTF)) {
@@ -183,16 +234,20 @@ bool i2c_write(uint32_t i2c_id, uint8_t data) {
         // Limpia la bandera de fallo de ACK
         I2C_SR1(i2c_id) &= ~I2C_SR1_AF;
         // Manejar el error de NACK aquí (por ejemplo, reenviar el mensaje o detener la comunicación)
-        return false;
+        return pdFALSE;
     }
 
-    return true;
+    return pdPASS;
 }
 
-// Función para leer un byte de datos por I2C (modo READ)
-// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
-// last: true si es el último byte a leer, false si no
-// Retorna el byte de datos leído
+
+/**
+ * @brief Lee un byte de datos por I2C en modo READ
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param last true si es el último byte a leer, false si no
+ * @return uint8_t Byte de datos leído [REVISAR: tratamiento de error?] (!)
+ */
 uint8_t i2c_read(uint32_t i2c_id, bool last) {
     if (last) {
         i2c_disable_ack(i2c_id);
@@ -208,8 +263,15 @@ uint8_t i2c_read(uint32_t i2c_id, bool last) {
     return i2c_get_data(i2c_id);
 }
 
-// Tarea para transmitir datos por I2C (sean datos o solicitudes de lectura)
-// Descripcion: La tarea espera a que haya datos en la cola de transmisión y los encola en la cola de transmisión
+
+/**
+ * @brief Tarea para transmitir bytes por I2C, ya sean datos o solicitudes de lectura. 
+ * 
+ *        Espera a que haya datos en la cola de transmisión y los encola en la cola de transmisión
+ * 
+ * @param pvParameters Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @return void
+ */
 void task_i2c_tx(void *pvParameters) {
     i2c_t * i2c = get_i2c((uint32_t) pvParameters);
     if(i2c == NULL || i2c -> txq == NULL || i2c -> rxq == NULL){
@@ -268,7 +330,13 @@ void task_i2c_tx(void *pvParameters) {
     }
 }
 
-// Tarea para tratar los mensajes de solicitud de lectura (modificar según utilidad)
+/**
+ * @brief Tarea para leer bytes por I2C y mostrarlos por UART
+ *        [REVISAR: generalizar para cualquier uso] (!)
+ * 
+ * @param pvParameters Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @return void
+ */
 void task_read_i2c(void *pvParameters) {
     i2c_t * i2c = get_i2c((uint32_t) pvParameters);
     if(i2c == NULL){
@@ -291,11 +359,24 @@ void task_read_i2c(void *pvParameters) {
 /******************************
  * TESTING
  * ***************************/
- 
+
+/**
+ * @brief Imprime un mensaje por UART
+ * 
+ * @param s Mensaje a imprimir
+ * @return void
+ */
 void print_uart(const char *s){
     UART_puts(USART1, s, pdMS_TO_TICKS(500));
 }
 
+/**
+ * @brief Tarea para escribir bytes por I2C1 en modo WRITE
+ *        Envia un conteo creciente a partir de 0
+ * 
+ * @param pvParameters Dirección I2C del esclavo
+ * @return void
+ */
 void test_write_i2c(void *pvParameters) {
     i2c_t * i2c = get_i2c(I2C1);
     msg_t msg;
@@ -315,6 +396,13 @@ void test_write_i2c(void *pvParameters) {
     }
 }
 
+/**
+ * @brief Tarea para solicitar bytes por I2C1 en modo READ
+ *       Solicita un byte al esclavo y lo imprime por UART
+ * 
+ * @param pvParameters Dirección I2C del esclavo
+ * @return void
+ */
 void test_request_i2c(void *pvParameters) {
     i2c_t * i2c = get_i2c(I2C1);
     msg_t msg;

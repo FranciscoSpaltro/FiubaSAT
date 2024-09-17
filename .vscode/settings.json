@@ -2,6 +2,8 @@
     "files.associations": {
         "gpio.h": "c",
         "rcc.h": "c",
-        "freertos.h": "c"
+        "freertos.h": "c",
+        "usart.h": "c",
+        "i2c_copy.h": "c"
     }
 }

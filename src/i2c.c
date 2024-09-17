@@ -1,4 +1,4 @@
-#include "i2c.h"
+#include "i2c_copy.h"
 
 typedef struct {
     uint32_t i2c_id;
@@ -11,12 +11,11 @@ typedef struct {
 typedef struct {
     uint8_t addr;  // Dirección I2C del esclavo
     uint8_t data;  // Datos a enviar
+    bool request;  // true si es una solicitud
 } msg_t;
 
 static i2c_t i2c1;
 static i2c_t i2c2;
-
-static uint8_t slave_address_request = 0;
 
 static i2c_t * get_i2c(uint32_t i2c_id) {
     switch(i2c_id) {
@@ -29,30 +28,33 @@ static i2c_t * get_i2c(uint32_t i2c_id) {
     }
 }
 
-static void enqueue_i2c_msg(msg_t *msg, QueueHandle_t queue) {
-    // Verificar si la cola está llena
-    if (uxQueueSpacesAvailable(queue) == 0) {
-        print_uart("La cola I2C está llena\n\r");
-        return; // Opcionalmente, puedes retornar o manejar el error de otra manera
-    }
+// Función para encolar un mensaje msg en la cola queue
+// Retorna true si el mensaje fue encolado, false si la cola está llena o hubo un error
+static bool enqueue_i2c_msg(msg_t *msg, QueueHandle_t queue) {
+    if (uxQueueSpacesAvailable(queue) == 0)
+        return false;
 
-    // Intentar enviar el dato a la cola
-    if (xQueueSend(queue, msg, portMAX_DELAY) != pdPASS) {
-        // Manejar el error de cola aquí
-        print_uart("Error al encolar datos I2C\n\r");
+    if (xQueueSend(queue, msg, pdMS_TO_TICKS(10)) != pdPASS) {
+        false;
     }
 }
 
+// Función para desencolar un mensaje de la cola queue
+// Retorna el mensaje desencolado o un mensaje con addr = 0 y data = 0 si hubo un error
 static msg_t dequeue_i2c_msg(QueueHandle_t queue) {
     msg_t msg;
-    if (xQueueReceive(queue, &msg, portMAX_DELAY) != pdPASS) {
-        // Manejar el error de cola aquí
-        print_uart("Error al desencolar datos I2C\n\r");
+    if (xQueueReceive(queue, &msg, pdMS_TO_TICKS(10)) != pdPASS) {
+        msg.addr = 0;
+        msg.data = 0;
+        return msg;
     }
     return msg;
 }
 
-void i2c_setup(uint32_t i2c_id) {
+// Función para configurar el periférico I2C
+// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
+// Retorna true si la configuración fue exitosa, false si hubo un error
+bool i2c_setup(uint32_t i2c_id) {
     i2c_t * i2c = get_i2c(i2c_id);
     
     if(i2c_id == I2C1){
@@ -91,23 +93,34 @@ void i2c_setup(uint32_t i2c_id) {
         i2c_peripheral_enable(i2c->i2c_id); // Habilitar I2C2
     }
     
-    i2c -> mutex = xSemaphoreCreateMutex();
-    if (i2c->mutex == NULL) {
-        print_uart("Error al crear el semáforo\n\r");
-        while(1);
-    }
+    if ((i2c -> mutex = xSemaphoreCreateMutex()) == NULL)
+        return false;
 
-    i2c -> txq = xQueueCreate(10, sizeof(msg_t)); // Cola para datos a enviar
-    i2c -> rxq = xQueueCreate(10, sizeof(msg_t)); // Cola para datos recibidos
-    i2c -> request = xSemaphoreCreateBinary(); // Semáforo para solicitudes
+    if ((i2c -> request = xSemaphoreCreateBinary()) == NULL)
+        return false;
+
+    if((i2c -> txq = xQueueCreate(10, sizeof(msg_t))) == NULL)
+        return false;
+
+    if((i2c -> rxq = xQueueCreate(10, sizeof(msg_t))) == NULL)
+        return false;
+    
+    return true;
 }
 
+// Función para esperar hasta que el periférico I2C esté listo
+// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
 void i2c_wait_until_ready(uint32_t i2c_id) {
     while (I2C_SR2(i2c_id) & I2C_SR2_BUSY) {
         taskYIELD();
     }
 }
 
+/************************ PROCESO DE INICIO DE COMUNICACIÓN I2C ************************/
+// Función para iniciar una comunicación I2C
+// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
+// addr: Dirección del esclavo I2C
+// read: true si se va a leer, false si se va a escribir
 bool i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
     i2c_wait_until_ready(i2c_id);
     i2c_send_start(i2c_id);
@@ -124,7 +137,6 @@ bool i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
         // Verificar si ocurrió un NACK
         if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
             I2C_SR1(i2c_id) &= ~I2C_SR1_AF; // Limpiar bandera de fallo de ACK
-            print_uart("Error al establecer la comunicacion\n\r");
             i2c_send_stop(i2c_id); // Detener comunicación
             return false; // Indicar que la comunicación falló
         }
@@ -137,7 +149,28 @@ bool i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
     return true; // Indicar que la comunicación fue exitosa
 }
 
-void i2c_write(uint32_t i2c_id, uint8_t data) {
+
+/************************ PROCESO DE TRANSMISION DE UN MENSAJE ************************/
+// 1. Encolar un msg_t con la dirección y el dato a enviar en TXQ. El flag request debe estar en false
+// 2. Iniciar la comunicación I2C en modo WRITE con i2c_start (puerto I2C, dirección del esclavo, false)
+// 3. Enviar el byte de datos con i2c_write (puerto I2C, byte de datos)
+// 4. Esperar a que se complete la transferencia de datos
+// 5. Comprobar si se recibió ACK del esclavo
+// 6. Enviar un STOP para finalizar la comunicación
+
+/*                  PROCESO DE SOLICITUD Y RECEPCIÓN DE UN MENSAJE                  */
+// 1. Encolar un msg_t con la dirección del esclavo en TXQ. El flag request debe estar en true
+// 2. Iniciar la comunicación I2C en modo READ con i2c_start (puerto I2C, dirección del esclavo, true)
+// 3. Leer el byte de datos con i2c_read (puerto I2C, true) y encolarlo en RXQ
+// 4. Enviar un NACK si es el último byte a leer
+// 5. Enviar un STOP para finalizar la comunicación
+
+
+// Función para enviar un byte de datos por I2C (modo WRITE)
+// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
+// data: Byte de datos a enviar
+// Retorna true si el byte fue enviado, false si hubo un error
+bool i2c_write(uint32_t i2c_id, uint8_t data) {
     i2c_send_data(i2c_id, data);
     // Esperar hasta que se complete la transferencia de datos
     while (!(I2C_SR1(i2c_id) & I2C_SR1_BTF)) {
@@ -150,10 +183,16 @@ void i2c_write(uint32_t i2c_id, uint8_t data) {
         // Limpia la bandera de fallo de ACK
         I2C_SR1(i2c_id) &= ~I2C_SR1_AF;
         // Manejar el error de NACK aquí (por ejemplo, reenviar el mensaje o detener la comunicación)
-        print_uart("No se recibio ACK\n\r");
+        return false;
     }
+
+    return true;
 }
 
+// Función para leer un byte de datos por I2C (modo READ)
+// i2c_id: Identificador del periférico I2C (I2C1 o I2C2) en uint32_t
+// last: true si es el último byte a leer, false si no
+// Retorna el byte de datos leído
 uint8_t i2c_read(uint32_t i2c_id, bool last) {
     if (last) {
         i2c_disable_ack(i2c_id);
@@ -169,10 +208,15 @@ uint8_t i2c_read(uint32_t i2c_id, bool last) {
     return i2c_get_data(i2c_id);
 }
 
-
-
+// Tarea para transmitir datos por I2C (sean datos o solicitudes de lectura)
+// Descripcion: La tarea espera a que haya datos en la cola de transmisión y los encola en la cola de transmisión
 void task_i2c_tx(void *pvParameters) {
     i2c_t * i2c = get_i2c((uint32_t) pvParameters);
+    if(i2c == NULL || i2c -> txq == NULL || i2c -> rxq == NULL){
+        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
+        vTaskDelete(NULL);
+        return;
+    }
     msg_t msg;
     const uint8_t max_retries = 10;
     for (;;) {
@@ -181,27 +225,42 @@ void task_i2c_tx(void *pvParameters) {
             uint8_t retries = 0;
             bool success = false;
             while(retries < max_retries && !success){
-                if (xSemaphoreTake(i2c -> mutex, portMAX_DELAY) == pdTRUE) {
-                    // Intentar iniciar la comunicación I2C
-                    if (i2c_start(i2c->i2c_id, msg.addr, false)) {
-                        i2c_write(i2c->i2c_id, msg.data);
-                        i2c_send_stop(i2c->i2c_id);
-                        success = true;
+                if (xSemaphoreTake(i2c -> mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                    if(msg.request){
+                        // Intentar iniciar la comunicación I2C
+                        if (i2c_start(i2c->i2c_id, msg.addr, true)) {
+                            msg.data = i2c_read(i2c -> i2c_id, true);
+                            i2c_send_stop(i2c -> i2c_id);
+                            enqueue_i2c_msg(&msg, i2c -> rxq); // Encolar el dato recibido
+                            success = true;
+                        } else {
+                            // La comunicación no se pudo establecer
+                            print_uart("Error: No se pudo establecer la comunicación I2C (RQT).\n\r");
+                        }
                     } else {
-                        // La comunicación no se pudo establecer
-                        print_uart("Error: No se pudo establecer la comunicación I2C.\n\r");
-                    }                    
+                        // Intentar iniciar la comunicación I2C
+                        if (i2c_start(i2c->i2c_id, msg.addr, false)) {
+                            i2c_write(i2c->i2c_id, msg.data);
+                            i2c_send_stop(i2c->i2c_id);
+                            success = true;
+                        } else {
+                            // La comunicación no se pudo establecer
+                            print_uart("Error: No se pudo establecer la comunicación I2C (TX).\n\r");
+                        }                    
+                    }
+                    xSemaphoreGive(i2c -> mutex);
                 } else {
                     print_uart("Error: No se pudo obtener el mutex.\n\r");
                 }
                 retries++;
-                xSemaphoreGive(i2c -> mutex);
             }
 
             if(!success){
                 print_uart("Error: No se pudo enviar el mensaje.\n\r");
                 vTaskDelay(pdMS_TO_TICKS(3000)); // Esperar 3 segundos antes de reintentar
             }
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(10)); // Para reducir la carga del CPU
         }
 
         // Ceder la ejecución para permitir que otras tareas se ejecuten
@@ -209,47 +268,39 @@ void task_i2c_tx(void *pvParameters) {
     }
 }
 
-
-
-void task_i2c_request(void *pvParameters) {
+// Tarea para tratar los mensajes de solicitud de lectura (modificar según utilidad)
+void task_read_i2c(void *pvParameters) {
     i2c_t * i2c = get_i2c((uint32_t) pvParameters);
-    msg_t msg;
-    const uint8_t max_retries = 10;
-    for (;;) {
-        if (xSemaphoreTake(i2c -> request, portMAX_DELAY) == pdTRUE){
-            msg.addr = slave_address_request;
-            uint8_t retries = 0;
-            bool success = false;
-            while(retries < max_retries && !success){
-                if (xSemaphoreTake(i2c -> mutex, portMAX_DELAY) == pdTRUE) {
-                    if(i2c_start(i2c -> i2c_id, msg.addr, true)){
-                        msg.data = i2c_read(i2c -> i2c_id, true);
-                        i2c_send_stop(i2c -> i2c_id);
-                        xSemaphoreGive(i2c -> mutex); // Liberar el mutex
-                        enqueue_i2c_msg(&msg, i2c -> rxq); // Encolar el dato recibido
-                        success = true;
-                    } else {
-                        print_uart("Error: No se pudo establecer la comunicación I2C.\n\r");
-                        xSemaphoreGive(i2c -> mutex); // Liberar el mutex
-                        retries++;
-                    }
-                }
-                if(!success){
-                    print_uart("Error: No se pudo enviar el mensaje.\n\r");
-                    vTaskDelay(pdMS_TO_TICKS(3000)); // Esperar 3 segundos antes de reintentar
-                }
-            }
+    if(i2c == NULL){
+        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
+        vTaskDelete(NULL);
+    }
+    for(;;) {
+        // Imprimo el dato recibido
+        if(uxQueueMessagesWaiting(i2c -> rxq) == 0){
+            vTaskDelay(pdMS_TO_TICKS(10)); // Esperar 1 segundo antes de la próxima solicitud
+        } else {
+            msg_t msg = dequeue_i2c_msg(i2c -> rxq);
+            char buffer[50];
+            snprintf(buffer, 50, "Dato recibido: %d\n\r", msg.data);
+            print_uart(buffer);
         }
-
-        taskYIELD();
     }
 }
 
+/******************************
+ * TESTING
+ * ***************************/
+ 
+void print_uart(const char *s){
+    UART_puts(USART1, s, pdMS_TO_TICKS(500));
+}
 
 void test_write_i2c(void *pvParameters) {
     i2c_t * i2c = get_i2c(I2C1);
     msg_t msg;
     msg.addr = (uint8_t) pvParameters;
+    msg.request = false;
     msg.data = 0;
     
     for(;;) {
@@ -266,105 +317,18 @@ void test_write_i2c(void *pvParameters) {
 
 void test_request_i2c(void *pvParameters) {
     i2c_t * i2c = get_i2c(I2C1);
-
+    msg_t msg;
+    msg.addr = (uint8_t) pvParameters;
+    msg.request = true;
+    msg.data = 0;
+    
     for(;;) {
-        slave_address_request = (uint8_t) pvParameters;
-        xSemaphoreGive(i2c -> request);
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Esperar 1 segundo antes de la próxima solicitud
-        // Imprimo el dato recibido
-        i2c_t * i2c = get_i2c(I2C1);
-        if(uxQueueMessagesWaiting(i2c -> rxq) == 0){
-            print_uart("No hay datos en la cola\n\r");
+        if (uxQueueSpacesAvailable(i2c -> txq) > 0) {
+            enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
         } else {
-            msg_t msg = dequeue_i2c_msg(i2c -> rxq);
-            char buffer[50];
-            snprintf(buffer, 50, "Dato recibido: %d\n\r", msg.data);
-            print_uart(buffer);
+            print_uart("Espacio insuficiente\n\r");
         }
+
+        vTaskDelay(pdMS_TO_TICKS(2500)); // Esperar 5 segundos antes de la próxima solicitud
     }
-}
-
-void task_init_lcd(void *pvParameters) {
-    lcd_send_cmd(0x03); // Iniciar en modo 8 bits
-    vTaskDelay(pdMS_TO_TICKS(5)); // Esperar al menos 5 ms
-    lcd_send_cmd(0x03); // Repetir
-    vTaskDelay(pdMS_TO_TICKS(5)); // Esperar al menos 5 ms
-    lcd_send_cmd(0x03); // Tercer vez
-    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
-    lcd_send_cmd(0x02); // Pasar a modo 4 bits
-    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
-
-    // Comandos de inicialización del LCD
-    lcd_send_cmd(0x28); // Configuración de función
-    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
-    lcd_send_cmd(0x08); // Apagar display
-    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
-    lcd_send_cmd(0x01); // Limpiar display
-    vTaskDelay(pdMS_TO_TICKS(2));
-    lcd_send_cmd(0x04);
-    vTaskDelay(pdMS_TO_TICKS(2)); // Esperar al menos 2 ms
-    lcd_send_cmd(0x06); // Modo de entrada
-    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
-    lcd_send_cmd(0x0C); // Encender display, sin cursor
-    vTaskDelete(NULL);
-}
-
-void test_lcd(void *pvParameters){
-    vTaskDelay(500);
-    lcd_send_data("A");
-    lcd_send_data("B");
-    lcd_send_data("C");
-    vTaskDelete(NULL);
-}
-/******************************
- * TESTING
- * ***************************/
- 
-void print_uart(const char *s){
-    UART_puts(USART1, s, pdMS_TO_TICKS(500));
-}
-
-void lcd_send_cmd(uint8_t cmd) {
-    i2c_t * i2c = get_i2c(I2C2);
-    msg_t msg;
-    msg.addr = (uint8_t) I2C_SLAVE_ADDRESS;
-    
-    uint8_t data_u, data_l;
-    data_u = (cmd & 0xF0);        // Obtener los 4 bits más significativos
-    data_l = ((cmd << 4) & 0xF0); // Obtener los 4 bits menos significativos
-    
-    // Transmitir el comando en dos partes (modo 4 bits)
-    msg.data = data_u | 0x0C;  // E = 1, RS = 0, RW = 0
-    enqueue_i2c_msg(&msg, i2c -> txq);
-    msg.data = data_u | 0x08;  // E = 0, RS = 0, RW = 0
-    enqueue_i2c_msg(&msg, i2c -> txq);
-
-    msg.data = data_l | 0x0C;  // E = 1, RS = 0, RW = 0
-    enqueue_i2c_msg(&msg, i2c -> txq);
-    msg.data = data_l | 0x08;  // E = 0, RS = 0, RW = 0
-    enqueue_i2c_msg(&msg, i2c -> txq);
-
-    // Agregar tiempo de espera apropiado (similar a Arduino)
-    vTaskDelay(pdMS_TO_TICKS(1)); // Esperar al menos 1 ms
-}
-
-void lcd_send_data(uint8_t cmd) {
-    // Separar los 4 bits más altos y 4 bits más bajos del comando
-    i2c_t * i2c = get_i2c(I2C2);
-    msg_t msg;
-    msg.addr = (uint8_t) I2C_SLAVE_ADDRESS;
-
-    uint8_t data_u, data_l;
-    data_u = (cmd & 0xF0);        // Obtener los 4 bits más significativos
-    data_l = ((cmd << 4) & 0xF0); // Obtener los 4 bits menos significativos
-    
-    msg.data = data_u | 0x0D;  // E = 1, RS = 0, RW = 0 -> 0bxxxx1100
-    enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
-    msg.data = data_u | 0x09;  // E = 0, RS = 0, RW = 0 -> 0bxxxx1000
-    enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
-
-    msg.data = data_l | 0x0D;  // E = 1, RS = 0, RW = 0 -> 0bxxxx1100
-    enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
-    msg.data = data_l | 0x09;  // E = 0, RS = 0, RW = 0 -> 0bxxxx1000
-    enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
 }

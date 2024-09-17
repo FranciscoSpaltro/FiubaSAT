@@ -13,14 +13,13 @@
 #define I2C_SLAVE_ADDRESS 0x04 // Dirección del esclavo (Arduino)
 #define I2C_TIMEOUT_MS 1000   // Tiempo de espera en milisegundos
 
-
-bool i2c_setup(uint32_t i2c_id);
+void i2c_setup(uint32_t i2c_id);
 void i2c_wait_until_ready(uint32_t i2c_id);
 bool i2c_start(uint32_t i2c_id, uint8_t addr, bool read);
-bool i2c_write(uint32_t i2c_id, uint8_t data);
+void i2c_write(uint32_t i2c_id, uint8_t data);
 uint8_t i2c_read(uint32_t i2c_id, bool last);
 void task_i2c_tx(void *pvParameters);
-void task_read_i2c(void *pvParameters);
+void task_i2c_request(void *pvParameters);
 void test_write_i2c(void *pvParameters);
 void test_request_i2c(void *pvParameters);
 

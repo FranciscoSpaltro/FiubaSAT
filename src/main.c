@@ -23,7 +23,7 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask __attribute__((unused)), c
 
 static void uart_setup(void) ;
 static inline void uart_putc(char ch);
-void taskSPI_transmit(void *pvParameterss);
+void taskSPI1_transmit(void *pvParameterss);
 
 /* Main loop donde arranca el programa */
 
@@ -35,8 +35,8 @@ int main(void) {
 
     // Configuración del LED en PC13
     gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, GPIO13);
-    //uart_setup();       // Configuración del SPI
-    spi_setup();        // Configuración del SPI
+    uart_setup();       // Configuración de UART
+    spi_setup(SPI1);        // Configuración del SPI
 
     //spi_rx = xQueueCreate(256,sizeof(char));      //Creo la cola
     
@@ -45,15 +45,14 @@ int main(void) {
     
     uint8_t received_data;
 
-    xTaskCreate(taskSPI_transmit,"SPI trasnmit", 500,NULL,configMAX_PRIORITIES-1,NULL);
-    
+    //xTaskCreate(taskSPI_transmit,"SPI trasnmit", 500,NULL,configMAX_PRIORITIES-1,NULL);
+    xTaskCreate(taskSPI1_transmit,"SPI trasnmit", 500,NULL,configMAX_PRIORITIES-1,NULL);
     vTaskStartScheduler();
     
     for (;;);
     
     return 0;
 }
-
 
 
 static void uart_setup(void) {
@@ -79,5 +78,23 @@ static void uart_setup(void) {
 
 static inline void uart_putc(char ch) {
     usart_send_blocking(USART1, ch);
+}
+
+// Asumiendo que uart_txq y usart_get_flag/usart_send están definidos e inicializados
+
+void usart_Transmit(QueueHandle_t uart_txq) {
+    char ch;
+
+    for (;;) {
+        // Recibir carácter para transmitir
+        if (xQueueReceive(uart_txq, &ch, 500) == pdPASS) {
+            // Esperar hasta que el registro de transmisión esté vacío
+            while (!usart_get_flag(USART1, USART_SR_TXE)) {
+                taskYIELD(); // Ceder tiempo de CPU hasta que esté listo
+            }
+            // Enviar carácter
+            usart_send(USART1, ch);
+        }
+    }
 }
 

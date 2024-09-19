@@ -1,5 +1,6 @@
 #include "i2c.h"
 
+/**************************************** ESTRUCTURAS Y VARIABLES ****************************************/
 /**
  * @brief Estructura para manejar el periférico I2C
  * 
@@ -30,9 +31,11 @@ typedef struct {
     bool request;  // true si es una solicitud
 } msg_t;
 
+// Handlers de los puertos I2C
 static i2c_t i2c1;
 static i2c_t i2c2;
 
+/**************************************** FUNCIONES PRIVADAS ****************************************/
 /**
  * @brief Obtiene el handler de I2C basado en el identificador de 32 bits del periférico
  * 
@@ -51,7 +54,6 @@ static i2c_t * get_i2c(uint32_t i2c_id) {
     }
 }
 
-
 /**
  * @brief Encola un mensaje en la cola especificada
  * 
@@ -69,7 +71,6 @@ static BaseType_t enqueue_i2c_msg(msg_t *msg, QueueHandle_t queue) {
     return pdPASS;
 }
 
-
 /**
  * @brief Desencola un mensaje de la cola especificada
  * 
@@ -86,6 +87,104 @@ static msg_t dequeue_i2c_msg(QueueHandle_t queue) {
     return msg;
 }
 
+/**
+ * @brief Espera hasta que el periférico I2C especificado esté listo
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @return void
+ */
+
+static void i2c_wait_until_ready(uint32_t i2c_id) {
+    while (I2C_SR2(i2c_id) & I2C_SR2_BUSY) {
+        taskYIELD();
+    }
+}
+
+/**
+ * @brief Inicia una comunicación I2C con el esclavo especificado en modo lectura/escritura
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param addr Dirección de 8 bits del esclavo I2C
+ * @param read true si se va a leer, false si se va a escribir
+ * @return pdPASS si la comunicación fue exitosa, pdFALSE si hubo un error
+ */
+static BaseType_t i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
+    i2c_wait_until_ready(i2c_id);
+    i2c_send_start(i2c_id);
+
+    // Esperar hasta que el bit de Start esté establecido
+    while (!(I2C_SR1(i2c_id) & I2C_SR1_SB)) {
+        taskYIELD();
+    }
+
+    i2c_send_7bit_address(i2c_id, addr, read ? I2C_READ : I2C_WRITE);
+
+    // Esperar hasta que el bit de Address esté establecido
+    while (!(I2C_SR1(i2c_id) & I2C_SR1_ADDR)) {
+        // Verificar si ocurrió un NACK
+        if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
+            I2C_SR1(i2c_id) &= ~I2C_SR1_AF; // Limpiar bandera de fallo de ACK
+            i2c_send_stop(i2c_id); // Detener comunicación
+            return pdFALSE; // Indicar que la comunicación falló
+        }
+        taskYIELD();
+    }
+
+    // Limpiar la bandera de dirección
+    (void)I2C_SR2(i2c_id);
+    
+    return pdPASS; // Indicar que la comunicación fue exitosa
+}
+
+/**
+ * @brief Envia un byte de datos por I2C en modo WRITE
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param data Byte de datos a enviar
+ * @return pdPASS si el byte fue enviado, pdFALSE si hubo un error
+ */
+static BaseType_t i2c_write(uint32_t i2c_id, uint8_t data) {
+    i2c_send_data(i2c_id, data);
+    // Esperar hasta que se complete la transferencia de datos
+    while (!(I2C_SR1(i2c_id) & I2C_SR1_BTF)) {
+        taskYIELD();
+    }
+
+    // Comprobar el bit de ACK después de la transferencia
+    if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
+        // No se recibió ACK del esclavo (NACK)
+        // Limpia la bandera de fallo de ACK
+        I2C_SR1(i2c_id) &= ~I2C_SR1_AF;
+        // Manejar el error de NACK aquí (por ejemplo, reenviar el mensaje o detener la comunicación)
+        return pdFALSE;
+    }
+
+    return pdPASS;
+}
+
+/**
+ * @brief Lee un byte de datos por I2C en modo READ
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param last true si es el último byte a leer, false si no
+ * @return uint8_t Byte de datos leído [REVISAR: tratamiento de error?] (!)
+ */
+static uint8_t i2c_read(uint32_t i2c_id, bool last) {
+    if (last) {
+        i2c_disable_ack(i2c_id);
+    } else {
+        i2c_enable_ack(i2c_id);
+    }
+
+    while (!(I2C_SR1(i2c_id) & I2C_SR1_RxNE)) {
+        // Esperar hasta que el buffer de recepción no esté vacío
+        taskYIELD();
+    }
+
+    return i2c_get_data(i2c_id);
+}
+
+/**************************************** FUNCIONES PUBLICAS ****************************************/
 
 /**
  * @brief Configura y habilita el periférico I2C especificado [REVISAR: habilitacion por separado?] (!)
@@ -147,123 +246,6 @@ BaseType_t i2c_setup(uint32_t i2c_id) {
     return pdPASS;
 }
 
-
-/**
- * @brief Espera hasta que el periférico I2C especificado esté listo
- * 
- * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
- * @return void
- */
-void i2c_wait_until_ready(uint32_t i2c_id) {
-    while (I2C_SR2(i2c_id) & I2C_SR2_BUSY) {
-        taskYIELD();
-    }
-}
-
-/************************ PROCESO DE INICIO DE COMUNICACIÓN I2C ************************/
-/**
- * @brief Inicia una comunicación I2C con el esclavo especificado en modo lectura/escritura
- * 
- * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
- * @param addr Dirección de 8 bits del esclavo I2C
- * @param read true si se va a leer, false si se va a escribir
- * @return pdPASS si la comunicación fue exitosa, pdFALSE si hubo un error
- */
-static BaseType_t i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
-    i2c_wait_until_ready(i2c_id);
-    i2c_send_start(i2c_id);
-
-    // Esperar hasta que el bit de Start esté establecido
-    while (!(I2C_SR1(i2c_id) & I2C_SR1_SB)) {
-        taskYIELD();
-    }
-
-    i2c_send_7bit_address(i2c_id, addr, read ? I2C_READ : I2C_WRITE);
-
-    // Esperar hasta que el bit de Address esté establecido
-    while (!(I2C_SR1(i2c_id) & I2C_SR1_ADDR)) {
-        // Verificar si ocurrió un NACK
-        if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
-            I2C_SR1(i2c_id) &= ~I2C_SR1_AF; // Limpiar bandera de fallo de ACK
-            i2c_send_stop(i2c_id); // Detener comunicación
-            return pdFALSE; // Indicar que la comunicación falló
-        }
-        taskYIELD();
-    }
-
-    // Limpiar la bandera de dirección
-    (void)I2C_SR2(i2c_id);
-
-    return pdPASS; // Indicar que la comunicación fue exitosa
-}
-
-
-/************************ PROCESO DE TRANSMISION DE UN MENSAJE ************************/
-// 1. Encolar un msg_t con la dirección y el dato a enviar en TXQ. El flag request debe estar en false
-// 2. Iniciar la comunicación I2C en modo WRITE con i2c_start (puerto I2C, dirección del esclavo, false)
-// 3. Enviar el byte de datos con i2c_write (puerto I2C, byte de datos)
-// 4. Esperar a que se complete la transferencia de datos
-// 5. Comprobar si se recibió ACK del esclavo
-// 6. Enviar un STOP para finalizar la comunicación
-
-/*                  PROCESO DE SOLICITUD Y RECEPCIÓN DE UN MENSAJE                  */
-// 1. Encolar un msg_t con la dirección del esclavo en TXQ. El flag request debe estar en true
-// 2. Iniciar la comunicación I2C en modo READ con i2c_start (puerto I2C, dirección del esclavo, true)
-// 3. Leer el byte de datos con i2c_read (puerto I2C, true) y encolarlo en RXQ
-// 4. Enviar un NACK si es el último byte a leer
-// 5. Enviar un STOP para finalizar la comunicación
-
-
-/**
- * @brief Envia un byte de datos por I2C en modo WRITE
- * 
- * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
- * @param data Byte de datos a enviar
- * @return pdPASS si el byte fue enviado, pdFALSE si hubo un error
- */
-BaseType_t i2c_write(uint32_t i2c_id, uint8_t data) {
-    i2c_send_data(i2c_id, data);
-    // Esperar hasta que se complete la transferencia de datos
-    while (!(I2C_SR1(i2c_id) & I2C_SR1_BTF)) {
-        taskYIELD();
-    }
-
-    // Comprobar el bit de ACK después de la transferencia
-    if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
-        // No se recibió ACK del esclavo (NACK)
-        // Limpia la bandera de fallo de ACK
-        I2C_SR1(i2c_id) &= ~I2C_SR1_AF;
-        // Manejar el error de NACK aquí (por ejemplo, reenviar el mensaje o detener la comunicación)
-        return pdFALSE;
-    }
-
-    return pdPASS;
-}
-
-
-/**
- * @brief Lee un byte de datos por I2C en modo READ
- * 
- * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
- * @param last true si es el último byte a leer, false si no
- * @return uint8_t Byte de datos leído [REVISAR: tratamiento de error?] (!)
- */
-uint8_t i2c_read(uint32_t i2c_id, bool last) {
-    if (last) {
-        i2c_disable_ack(i2c_id);
-    } else {
-        i2c_enable_ack(i2c_id);
-    }
-
-    while (!(I2C_SR1(i2c_id) & I2C_SR1_RxNE)) {
-        // Esperar hasta que el buffer de recepción no esté vacío
-        taskYIELD();
-    }
-
-    return i2c_get_data(i2c_id);
-}
-
-
 /**
  * @brief Tarea para transmitir bytes por I2C, ya sean datos o solicitudes de lectura. 
  * 
@@ -289,7 +271,7 @@ void task_i2c_tx(void *pvParameters) {
             while(retries < max_retries && !success){
                 if (xSemaphoreTake(i2c -> mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
                     if(msg.request){
-                        // Intentar iniciar la comunicación I2C
+                        // Intentar iniciar la comunicación I2C                                                                                                                                     
                         if (i2c_start(i2c->i2c_id, msg.addr, true)) {
                             msg.data = i2c_read(i2c -> i2c_id, true);
                             i2c_send_stop(i2c -> i2c_id);
@@ -356,6 +338,64 @@ void task_read_i2c(void *pvParameters) {
     }
 }
 
+/**
+ * @brief Funcion para realizar un request por I2C
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param slave_addr Dirección de 8 bits del esclavo I2C 
+ * @return pdPASS si la solicitud fue realizada, pdFALSE si hubo un error
+ */
+
+BaseType_t make_request(uint32_t i2c_id, uint8_t slave_addr){
+    i2c_t * i2c = get_i2c(i2c_id);
+    if(i2c == NULL){
+        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
+        return pdFALSE;
+    }
+    msg_t msg;
+    msg.addr = slave_addr;
+    msg.request = true;
+    msg.data = 0;
+    if (uxQueueSpacesAvailable(i2c -> txq) > 0) {
+        enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
+    } else {
+        print_uart("Espacio insuficiente\n\r");
+        return pdFALSE;
+    }
+    return pdPASS;
+}
+
+/**
+ * @brief Funcion para escribir un byte por I2C
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param slave_addr Dirección de 8 bits del esclavo I2C
+ * @param data Byte de datos a enviar
+ * @return pdPASS si el byte fue enviado, pdFALSE si hubo un error
+ */
+
+BaseType_t write_data(uint32_t i2c_id, uint8_t slave_addr, uint8_t data){
+    i2c_t * i2c = get_i2c(i2c_id);
+    if(i2c == NULL){
+        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
+        return pdFALSE;
+    }
+    msg_t msg;
+    msg.addr = slave_addr;
+    msg.request = false;
+    msg.data = data;
+    if (uxQueueSpacesAvailable(i2c -> txq) > 0) {
+        enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
+    } else {
+        print_uart("Espacio insuficiente\n\r");
+        return pdFALSE;
+    }
+    return pdPASS;
+}
+
+
+
+
 /******************************
  * TESTING
  * ***************************/
@@ -378,20 +418,15 @@ void print_uart(const char *s){
  * @return void
  */
 void test_write_i2c(void *pvParameters) {
-    i2c_t * i2c = get_i2c(I2C1);
-    msg_t msg;
-    msg.addr = (uint8_t) pvParameters;
-    msg.request = false;
-    msg.data = 0;
+    uint32_t i2c_id = I2C1;
+    uint8_t slave_addr = (uint8_t) pvParameters;
+    uint8_t data = 0;
     
     for(;;) {
-        if (uxQueueSpacesAvailable(i2c -> txq) > 0) {
-            enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
-        } else {
-            print_uart("Espacio insuficiente\n\r");
-        }
+        if(write_data(i2c_id, slave_addr, data) == pdFALSE)
+            print_uart("Error: No se pudo enviar el mensaje.\n\r");
 
-        msg.data++;
+        data ++;
         vTaskDelay(pdMS_TO_TICKS(2500)); // Esperar 5 segundos antes de la próxima solicitud
     }
 }
@@ -403,19 +438,12 @@ void test_write_i2c(void *pvParameters) {
  * @param pvParameters Dirección I2C del esclavo
  * @return void
  */
+
 void test_request_i2c(void *pvParameters) {
-    i2c_t * i2c = get_i2c(I2C1);
-    msg_t msg;
-    msg.addr = (uint8_t) pvParameters;
-    msg.request = true;
-    msg.data = 0;
     
     for(;;) {
-        if (uxQueueSpacesAvailable(i2c -> txq) > 0) {
-            enqueue_i2c_msg(&msg, i2c -> txq); // Encolar mensaje en cola de transmisión
-        } else {
-            print_uart("Espacio insuficiente\n\r");
-        }
+        if(make_request((uint32_t) pvParameters, 0x08) == pdFALSE)
+            print_uart("Error: No se pudo realizar la solicitud.\n\r");
 
         vTaskDelay(pdMS_TO_TICKS(2500)); // Esperar 5 segundos antes de la próxima solicitud
     }

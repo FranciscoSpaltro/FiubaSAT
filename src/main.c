@@ -36,11 +36,11 @@ int main(void) {
     xTaskCreate(taskBlink, "LED", 100, NULL, 3, &blink_handle);
 
     xTaskCreate(task_i2c_tx, "I2C TX", 128, (void *) I2C1, 2, NULL);
-    xTaskCreate(task_read_i2c, "I2C RX", 128, (void *) I2C1, 3, NULL);
+    xTaskCreate(task_read_i2c, "I2C RX", 128, (void *) I2C1, 2, NULL);
 
-    // 0x08: UNO, 0x04: NANO
+    
     //xTaskCreate(test_write_i2c, "I2C WT", 128, (void *) 0x08, 3, NULL);
-    xTaskCreate(test_request_i2c, "I2C RQ", 128, (void *) 0x04, 3, NULL);
+    xTaskCreate(test_request_i2c, "I2C RQ", 128, (void *) I2C1, 2, NULL);
     
     //xTaskCreate(task_i2c_request, "I2C RQT", 128, (void *) I2C1, 3, NULL);
     //xTaskCreate(test_request_i2c, "I2C TX", 128, (void *) 0x04, 3, NULL);

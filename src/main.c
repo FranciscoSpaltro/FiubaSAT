@@ -35,8 +35,8 @@ int main(void) {
     xTaskCreate((TaskFunction_t)taskUART_transmit, "UART1 TX", 128, (void *)USART1, 3, NULL);
     xTaskCreate(taskBlink, "LED", 100, NULL, 3, &blink_handle);
 
-    xTaskCreate(task_i2c_tx, "I2C TX", 128, (void *) I2C1, 2, NULL);
-    xTaskCreate(task_read_i2c, "I2C RX", 128, (void *) I2C1, 2, NULL);
+    //xTaskCreate(task_i2c_tx, "I2C TX", 128, (void *) I2C1, 2, NULL);
+    //xTaskCreate(task_read_i2c, "I2C RX", 128, (void *) I2C1, 2, NULL);
 
     
     //xTaskCreate(test_write_i2c, "I2C WT", 128, (void *) 0x04, 3, NULL);

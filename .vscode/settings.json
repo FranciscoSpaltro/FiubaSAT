@@ -4,6 +4,9 @@
         "rcc.h": "c",
         "freertos.h": "c",
         "usart.h": "c",
-        "i2c_copy.h": "c"
+        "i2c_copy.h": "c",
+        "portmacro.h": "c",
+        "uart.h": "c",
+        "semphr.h": "c"
     }
 }

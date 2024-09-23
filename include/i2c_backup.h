@@ -13,18 +13,16 @@
 
 #define I2C_SLAVE_ADDRESS 0x04 // Dirección del esclavo (Arduino)
 #define I2C_TIMEOUT_MS 1000   // Tiempo de espera en milisegundos
+
 #define I2C_MAX_BUFFER 5
 
-// HTU21D
-#define TRIGGER_TEMP_MEASURE_NOHOLD  0xF3
-#define TRIGGER_HUMD_MEASURE_NOHOLD  0xF5
-#define SOFT_RESET  0xFE
-#define HTU21D_ADDRESS 0x40
-
 BaseType_t i2c_setup(uint32_t i2c_id);
+void task_i2c_tx(void *pvParameters);
+void task_read_i2c(void *pvParameters);
+void test_write_i2c(void *pvParameters);
 void test_request_i2c(void *pvParameters);
 
-
+uint8_t * i2c_make_request(uint32_t i2c_id, msg_t msg);
 
 /******************************
  * TESTING PARA I2C

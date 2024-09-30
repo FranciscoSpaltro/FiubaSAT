@@ -7,12 +7,19 @@
 #include "FreeRTOS.h"
 #include <queue.h>
 #include "semphr.h"
+#include "spi_config.h"
 
-void spi_setup(uint32_t SPI_id);
 void taskSPI1_transmit(void *pvParameters);
 void SPI_transmit(uint32_t SPI_id, TickType_t xTicksToWait);
 BaseType_t SPI_receive(uint32_t SPI_id, TickType_t xTicksToWait);
 BaseType_t enqueue_SPI_data(uint32_t SPI_id ,uint16_t data);
-void spi_setup(uint32_t SPI_id);
+BaseType_t spi_setup(uint32_t SPI_id);
+uint16_t spi_xfer_blocking(uint32_t spi, uint16_t data);
+
+// Función para seleccionar el slave (habilitar su CS)
+void spi_select_slave(uint32_t SPI_id, uint32_t SLAVE_id);
+
+// Función para deseleccionar el slave (deshabilitar su CS)
+void spi_deselect_slave(uint32_t SPI_id, uint32_t SLAVE_id);
 
 #endif

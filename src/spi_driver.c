@@ -1,8 +1,12 @@
+/*
+RECORDATORIOS: dar opcion a menos manual activando el CS o AUTOMATICO (lo maneja el periferico)
+-En caso de tener un solo esclavo es mejor el uso en automatico. Que pasa si queda el el chip enabkle y se va a otra tarea?
+*/
+
 #include "FreeRTOS.h"
 #include "spi_driver.h"
 #include <libopencm3/stm32/rcc.h>
 #include <string.h>
-#include "crc.h"
 
 #define SPI_SIZE_BUFFER 256  // Queues size
 #define DEBUG_PLOTTING
@@ -12,6 +16,7 @@ typedef struct {
     QueueHandle_t SPI_txq;  // Cola de transmisión
     QueueHandle_t SPI_rxq;  // Cola de recepción donde se bufferean los datos
     SemaphoreHandle_t mutex;  // Mutex para protección de acceso
+    slave_t *slaves; // Arreglo de esclavos
 } spi_t;
 
 // Definición de estructuras SPI_t
@@ -20,7 +25,8 @@ static spi_t spi2;
 
 //Prototipos de funciones
 static spi_t *get_spi(uint32_t SPI_id);
-static BaseType_t spi_init(spi_t *spi, uint32_t SPI_id);
+static BaseType_t spi_create(spi_t *spi, uint32_t SPI_id);
+static const slave_t* spi_get_slave(const spi_t *spi, uint8_t slave_id);
 
 // Manejadores de SPIs
 static spi_t *get_spi(uint32_t SPI_id) {
@@ -31,28 +37,31 @@ static spi_t *get_spi(uint32_t SPI_id) {
     }
 }
 
-void spi_setup(uint32_t SPI_id) {
+BaseType_t spi_setup(uint32_t SPI_id) {
 
     spi_t *spi = get_spi(SPI_id);       //Obtengo estructura spi_t en base al SPI_id
     
     if (SPI_id == SPI1){
         rcc_periph_clock_enable(RCC_SPI1); //Enable the clock for SPI1
 
-        gpio_set_mode(
-            GPIOA,
+        /* Configuración de los pines GPIO para SPI */
+        
+        gpio_set_mode(GPIOA,
             GPIO_MODE_OUTPUT_50_MHZ,
             GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
-            GPIO4 | GPIO5 | GPIO7 // NSS=PA4, SCK=PA5, MOSI=PA7
-        );
+            GPIO5 | GPIO7);  // SCK=PA5, MOSI=PA7
 
-        gpio_set_mode(
-            GPIOA,
+        gpio_set_mode(GPIOA,
             GPIO_MODE_INPUT,
             GPIO_CNF_INPUT_FLOAT,
-            GPIO6 // MISO=PA6
-        );
+            GPIO6);  // MISO=PA6
 
-        //spi_reset(SPI1);
+        /* Configuración de NSS como función alternativa para manejo por hardware */
+        
+        gpio_set_mode(GPIOA,
+            GPIO_MODE_OUTPUT_50_MHZ,
+            GPIO_CNF_OUTPUT_PUSHPULL,
+            GPIO4);  // NSS=PA4 (manejado por hardware)
         
         spi_init_master(
             SPI1,
@@ -62,7 +71,8 @@ void spi_setup(uint32_t SPI_id) {
             SPI_CR1_DFF_8BIT,                   //Indica el largo de palabra a utilizar
             SPI_CR1_MSBFIRST                    //Se transmite el MSB primero
         );
-        if(spi_init(spi, SPI1) != pdPASS) return pdFAIL;
+
+        if(spi_create(spi, SPI1) != pdPASS) return pdFAIL;
     }
 
     else if (SPI_id == SPI2){
@@ -81,30 +91,32 @@ void spi_setup(uint32_t SPI_id) {
             GPIO12 // MISO2=PB14
         );
 
-        //spi_reset(SPI2);
-        
+               
         spi_init_master(
             SPI2,
-            SPI_CR1_BAUDRATE_FPCLK_DIV_256,     //Se debe tener en cuenta la maxima frecuencia de operacion de APB1 y APB2
+            SPI_CR1_BAUDRATE_FPCLK_DIV_64,     //Se debe tener en cuenta la maxima frecuencia de operacion de APB1 y APB2
             SPI_CR1_CPOL_CLK_TO_0_WHEN_IDLE,    //SCK en estado bajo en el estado inactivo (IDLE)
             SPI_CR1_CPHA_CLK_TRANSITION_1,      //Determina la fase del CLK (en que flanco se captura)
             SPI_CR1_DFF_8BIT,                   //Indica el largo de palabra a utilizar
             SPI_CR1_MSBFIRST                    //Se transmite el MSB primero
         );
 
-        if(spi_init(spi, SPI2) != pdPASS) return pdFAIL;
+        if(spi_crete(spi, SPI2) != pdPASS) return pdFAIL;
         
     }
 
     // Me puedo desentender del codigo
 
     spi_disable_software_slave_management(spi->SPI_id);    //Desactivo el manejo del NSS por software
-    spi_enable_ss_output(spi->SPI_id);    //Activo el manejo del NSS por hardware (SPI PHP)
-    spi_enable(spi->SPI_id);                  
+    spi_enable_ss_output(spi->SPI_id);    //Configuro el pin NSS como salida.
+    spi_enable(spi->SPI_id);
+    
+    return pdTRUE;                  
 }
 
 // Inicialización de SPI
-static BaseType_t spi_init(spi_t *spi, uint32_t SPI_id) {
+
+static BaseType_t spi_create(spi_t *spi, uint32_t SPI_id) {
 
     spi->SPI_id = SPI_id;  // Asigna el SPI_id correspondiente
 
@@ -128,9 +140,56 @@ static BaseType_t spi_init(spi_t *spi, uint32_t SPI_id) {
 
     xSemaphoreGive(spi->mutex);
 
+      // Asigna el puntero a los esclavos según el SPI_id
+    if (SPI_id == SPI1) {
+        spi->slaves = spi1_slaves;  // Usar la configuración de SPI1
+    
+    } else {
+        // Puedes manejar otros SPI aquí o asignar NULL si no hay
+        spi->slaves = NULL;
+    }
+
     return pdPASS;
 }
 
+uint16_t spi_xfer_blocking(uint32_t spi, uint16_t data)
+{
+	spi_send(spi, data);
+    
+	/* Wait for transfer finished. */
+	while (!(SPI_SR(spi) & SPI_SR_RXNE));
+
+	/* Read the data (8 or 16 bits, depending on DFF bit) from DR. */
+	return SPI_DR(spi);
+}
+
+// Función para seleccionar el slave (habilitar su CS)
+void spi_select_slave(uint32_t spi_id, uint32_t slave_id){
+    spi_t *spi = get_spi(spi_id);       //Obtengo estructura spi_t en base al SPI_id
+    slave_t *slave = spi_get_slave(spi, slave_id);
+    gpio_set(slave->gpio_port, slave->gpio_pin);
+}
+
+// Función para deseleccionar el slave (deshabilitar su CS)
+void spi_deselect_slave(uint32_t spi_id, uint32_t slave_id){
+    spi_t *spi = get_spi(spi_id);       //Obtengo estructura spi_t en base al SPI_id
+    slave_t *slave = spi_get_slave(spi, slave_id);
+    gpio_clear(slave->gpio_port, slave->gpio_pin);
+}
+
+
+// Función para buscar el esclavo por ID a partir de un puntero a spi_t
+static const slave_t* spi_get_slave(const spi_t *spi, uint8_t slave_id) {
+    // Iterar sobre los esclavos en el arreglo dentro de la estructura spi_t
+    for (size_t i = 0; i < SPI1_SLAVE_COUNT; i++) {
+        if (spi->slaves[i].slave_id == slave_id) {
+            return &spi->slaves[i]; // Retorna un puntero al esclavo encontrado
+        }
+    }
+    return NULL; // No se encontró el esclavo
+}
+
+/*
 void SPI_transmit(uint32_t SPI_id, TickType_t xTicksToWait) {
     spi_t *spi = get_spi(SPI_id);
     if (spi == NULL) return;
@@ -198,35 +257,6 @@ void taskSPI1_transmit(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(500)); // Para darle tiempo a arduino a imprimir
     }
 }
-
-/*
-void taskSPI2_transmit(void *pvParameters) {
-    char *cadena = "Prueba envio SPI2\n";
-    int length = strlen(cadena);
-    uint16_t data[length];  // Array de uint16_t para almacenar los datos
-
-    // Convertir cada carácter a uint16_t
-    for (int i = 0; i < length; i++) {
-        data[i] = (uint16_t)cadena[i];  // Conversión de tipo en C
-    }
-    enqueue_SPI_data(data, length, SPI2_txq);
-    for (;;) {
-        SPI_transmit(SPI2, SPI2_txq, pdMS_TO_TICKS(100));
-        enqueue_SPI_data(data, length, SPI2_txq);
-        vTaskDelay(pdMS_TO_TICKS(500)); // Para darle tiempo a arduino a imprimir
-    }
-}
-
-void taskSPI2_receive(void *pvParameters) {
-    int length = spi_xfer(SPI2,'R');
-    for (;;) {
-        SPI_receive(SPI2, SPI2_rxq,length, pdMS_TO_TICKS(100)); //Recibe length cantidad de datos
-        Queue_send(SPI2_rxq , SPI2_txq);
-        usart_transmit(SPI2, SPI2_txq,pdMS_TO_TICKS(100));         
-    }
-}
-
-*/
 
 
 // Implementación de la función enqueue_SPI_data
@@ -392,6 +422,7 @@ void taskSPI_transmit(uint32_t SPI_id, TickType_t xTicksToWait) {
 
 // ---------------------------------------- CONSULTAS -------------------------------------------------//
 
+
 typedef struct {
     uint8_t slave_id;      // ID del dispositivo slave (por ejemplo, el pin del CS)
     uint8_t *message;      // Puntero al mensaje a transmitir
@@ -420,3 +451,4 @@ typedef struct {
 } spi__t;
 
 
+*/

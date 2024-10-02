@@ -10,16 +10,18 @@
 #include "spi_config.h"
 
 void taskSPI1_transmit(void *pvParameters);
-void SPI_transmit(uint32_t SPI_id, TickType_t xTicksToWait);
+
 BaseType_t SPI_receive(uint32_t SPI_id, TickType_t xTicksToWait);
 BaseType_t enqueue_SPI_data(uint32_t SPI_id ,uint16_t data);
 BaseType_t spi_setup(uint32_t SPI_id);
 uint16_t spi_xfer_blocking(uint32_t spi, uint16_t data);
-
+void spi_set_dff(uint32_t spi_id, uint8_t data_size);
+void spi_transmit(uint32_t SPI_id, void *data, uint16_t size, TickType_t xTicksToWait);
+void spi_receive(uint32_t SPI_id, uint16_t *data, uint16_t size, TickType_t xTicksToWait);
 // Función para seleccionar el slave (habilitar su CS)
-void spi_select_slave(uint32_t SPI_id, uint32_t SLAVE_id);
-
+BaseType_t spi_select_slave(uint32_t SPI_id, uint32_t SLAVE_id);
+void uart_puts(const char *str);
 // Función para deseleccionar el slave (deshabilitar su CS)
-void spi_deselect_slave(uint32_t SPI_id, uint32_t SLAVE_id);
+BaseType_t spi_deselect_slave(uint32_t SPI_id, uint32_t SLAVE_id);
 
 #endif

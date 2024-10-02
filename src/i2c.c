@@ -12,10 +12,8 @@
  */
 typedef struct {
     uint32_t i2c_id;
-    QueueHandle_t txq;
-    QueueHandle_t rxq;
+    QueueHandle_t responses;
     SemaphoreHandle_t mutex;
-    SemaphoreHandle_t request;
 } i2c_t;
 
 /**
@@ -238,165 +236,160 @@ BaseType_t i2c_setup(uint32_t i2c_id) {
     if ((i2c -> mutex = xSemaphoreCreateMutex()) == NULL)
         return pdFALSE;
 
-    if ((i2c -> request = xSemaphoreCreateBinary()) == NULL)
-        return pdFALSE;
-
-    if((i2c -> txq = xQueueCreate(10, sizeof(msg_t))) == NULL)
-        return pdFALSE;
-
-    if((i2c -> rxq = xQueueCreate(10, sizeof(msg_t))) == NULL)
+    if((i2c -> responses = xQueueCreate(10, sizeof(uint8_t))) == NULL)
         return pdFALSE;
     
     return pdPASS;
 }
 
-/**
- * @brief Tarea para transmitir bytes por I2C, ya sean datos o solicitudes de lectura. 
- * 
- *        Espera a que haya datos en la cola de transmisión y los encola en la cola de transmisión
- * 
- * @param pvParameters Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
- * @return void
- */
-void task_i2c_tx(void *pvParameters) {
-    i2c_t *i2c = get_i2c((uint32_t) pvParameters);
-    if (i2c == NULL || i2c->txq == NULL || i2c->rxq == NULL) {
-        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    msg_t msg;
-    const uint8_t max_retries = 10;
-
-    for (;;) {
-        // Verificar si hay datos en la cola con un tiempo de espera corto
-        if (xQueueReceive(i2c->txq, &msg, pdMS_TO_TICKS(10)) == pdPASS) {
-            uint8_t retries = 0;
-            bool success = false;
-
-            while (retries < max_retries && !success) {
-                if (xSemaphoreTake(i2c->mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                    if (msg.request) {
-                    // SECCIÓN REQUEST
-                        // Intentar iniciar la comunicación I2C
-                        if (i2c_start(i2c->i2c_id, msg.addr, true)) {
-                            //taskENTER_CRITICAL(); // Iniciar sección crítica
-                            // Almacenar los datos recibidos en el buffer estático
-                            for (size_t i = 0; i < msg.length; i++) {
-                                msg.data[i] = i2c_read(i2c->i2c_id, (i == (msg.length - 1))); // true solo para el último byte
-                            }
-                            i2c_send_stop(i2c->i2c_id);
-                            enqueue_i2c_msg(&msg, i2c->rxq); // Encolar el dato recibido
-                            success = true;
-                            //taskEXIT_CRITICAL(); // Finalizar sección crítica
-                        }
-                    } else {
-                    // SECCIÓN WRITE
-                        // Intentar iniciar la comunicación I2C
-                        if (i2c_start(i2c->i2c_id, msg.addr, false)) {
-                            for (size_t i = 0; i < msg.length; i++) {
-                                i2c_write(i2c->i2c_id, msg.data[i]); // Enviar byte por byte
-                            }
-                            i2c_send_stop(i2c->i2c_id);
-                            success = true;
-                        } else {
-                            print_uart("Error: No se pudo establecer la comunicación I2C (TX).\n\r");
-                        }
-                    }
-                    xSemaphoreGive(i2c->mutex);
-                } else {
-                    print_uart("Error: No se pudo obtener el mutex.\n\r");
-                }
-                retries++;
-            }
-
-            if (!success) {
-                print_uart("Error: No se pudo enviar el mensaje.\n\r");
-                vTaskDelay(pdMS_TO_TICKS(3000)); // Esperar 3 segundos antes de reintentar
-            }
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(10)); // Para reducir la carga del CPU
-        }
-
-        // Ceder la ejecución para permitir que otras tareas se ejecuten
-        taskYIELD();
-    }
-}
-
 
 /**
- * @brief Tarea para leer bytes por I2C y mostrarlos por UART
- *        [REVISAR: generalizar para cualquier uso] (!)
- * 
- * @param pvParameters Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
- * @return void
- */
-void task_read_i2c(void *pvParameters) {
-    i2c_t *i2c = get_i2c((uint32_t) pvParameters);
-    if (i2c == NULL) {
-        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
-        vTaskDelete(NULL);
-    }
-
-    for (;;) {
-        // Verificar si hay mensajes en la cola de recepción
-        if (uxQueueMessagesWaiting(i2c->rxq) == 0) {
-            vTaskDelay(pdMS_TO_TICKS(10)); // Esperar 10 ms antes de la próxima verificación
-        } else {
-            msg_t msg = dequeue_i2c_msg(i2c->rxq);
-            print_uart("Datos recibidos: ");
-
-            // Agregar todos los bytes del buffer de datos a la cadena
-            for (size_t i = 0; i < msg.length; i++) {
-                // Paso el byte a char para imprimirlo
-                char c[3];
-                sprintf(c, "%02X", msg.data[i]);
-                print_uart(c);
-                print_uart(" ");
-            }
-            // Agregar un salto de línea al final
-            print_uart("\n\r");
-        }
-    }
-}
-
-
-
-/**
- * @brief Función para solicitar datos por I2C
+ * @brief Realiza una solicitud de datos al esclavo I2C especificado
  * 
  * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
- * @param slave_addr Dirección de 8 bits del esclavo I2C
+ * @param addr Dirección de 8 bits del esclavo I2C
  * @param length Longitud de los datos a solicitar
- * @return pdPASS si la solicitud fue realizada, pdFALSE si hubo un error
+ * 
+ * @return pdPASS si la solicitud fue exitosa, pdFALSE si hubo un error
  */
-BaseType_t i2c_request_from(uint32_t i2c_id, uint8_t slave_addr, size_t length) {
-    if (length == 0 || length > I2C_MAX_BUFFER) {
-        print_uart("Error: Longitud inválida.\n\r");
-        return pdFALSE;
-    }
-
+static BaseType_t i2c_make_request(uint32_t i2c_id, uint8_t addr, size_t length) {
     i2c_t *i2c = get_i2c(i2c_id);
     if (i2c == NULL) {
         print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
         return pdFALSE;
     }
 
-    // Crear el mensaje de solicitud
-    msg_t msg;
-    msg.addr = slave_addr;
-    msg.length = length;
-    msg.request = true;
+    /*if(xSemaphoreTake(i2c -> responses_available, pdMS_TO_TICKS(10)) != pdTRUE){
+        return pdFALSE;
+    }*/
+    uint8_t data;
+    if (i2c_start(i2c->i2c_id, addr, true) != pdPASS) {
+        print_uart("Error al iniciar la comunicación (RQT).\n\r");
+        i2c_send_stop(i2c->i2c_id);
+        return pdFALSE;
+    }
+    //taskENTER_CRITICAL(); // Iniciar sección crítica
+    // Almacenar los datos recibidos en el buffer estático
+    for (size_t i = 0; i < length; i++) {
+        data = i2c_read(i2c->i2c_id, (i == (length - 1))); // true solo para el último byte
+        if(xQueueSend(i2c->responses, &data, pdMS_TO_TICKS(10)) != pdPASS){
+            print_uart("Error: No se pudo encolar el mensaje de solicitud.\n\r");
+            i2c_send_stop(i2c->i2c_id);
+            return pdFALSE;
+        }
+    }
+    i2c_send_stop(i2c->i2c_id);
+    //taskEXIT_CRITICAL(); // Finalizar sección crítica>
+    
 
-    // Encolar el mensaje en la cola de transmisión
-    if (enqueue_i2c_msg(&msg, i2c->txq) != pdPASS) {
-        print_uart("Error: No se pudo encolar el mensaje de solicitud.\n\r");
+    return pdPASS;
+}
+
+/**
+ * @brief Procedimiento para solicitar la temperatura al sensor HTU21D
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * 
+ * @return pdPASS si la solicitud fue exitosa, pdFALSE si hubo un error
+ */
+
+static BaseType_t request_htu21d(uint32_t i2c_id, uint8_t command) {
+    BaseType_t status;
+    i2c_t *i2c = get_i2c(i2c_id);
+    if (i2c == NULL) {
+        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
+        return pdFALSE;
+    }
+
+    if (xSemaphoreTake(i2c->mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (i2c_start(i2c->i2c_id, HTU21D_ADDRESS, false) == pdPASS) {
+            i2c_write(i2c->i2c_id, command);
+            i2c_send_stop(i2c->i2c_id);
+        } else {
+            print_uart("Error al iniciar comunicacion (comando).\n\r");
+            i2c_send_stop(i2c->i2c_id);
+            xSemaphoreGive(i2c->mutex);
+            return pdFALSE;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(50)); // Espera suficiente para la lectura
+
+        if(i2c_make_request(i2c_id, HTU21D_ADDRESS, 3) != pdPASS){
+            print_uart("Error: No se pudo realizar la solicitud.\n\r");
+            xSemaphoreGive(i2c->mutex);
+            return pdFALSE;
+        }
+
+        xSemaphoreGive(i2c->mutex);
+        
+    } else {
+        print_uart("Error: No se pudo obtener el mutex.\n\r");
         return pdFALSE;
     }
 
     return pdPASS;
 }
+
+static BaseType_t reset_htu21d(uint32_t i2c_id){
+    i2c_t *i2c = get_i2c(i2c_id);
+    if (i2c == NULL) {
+        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
+        return pdFALSE;
+    }
+
+    if (xSemaphoreTake(i2c->mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (i2c_start(i2c->i2c_id, HTU21D_ADDRESS, false) == pdPASS) {
+            i2c_write(i2c->i2c_id, SOFT_RESET);
+            i2c_send_stop(i2c->i2c_id);
+            vTaskDelay(pdMS_TO_TICKS(15));
+        } else {
+            print_uart("Error al iniciar comunicacion (reset).\n\r");
+            i2c_send_stop(i2c->i2c_id);
+            xSemaphoreGive(i2c->mutex);
+            return pdFALSE;
+        }
+
+        xSemaphoreGive(i2c->mutex);
+    } else {
+        print_uart("Error: No se pudo obtener el mutex.\n\r");
+        return pdFALSE;
+    }
+    return pdPASS;
+}
+
+static BaseType_t i2c_send_data_slave(uint32_t i2c_id, uint8_t addr, uint8_t* data, size_t length) {
+    i2c_t *i2c = get_i2c(i2c_id);
+    if (i2c == NULL) {
+        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
+        return pdFALSE;
+    }
+
+    if (xSemaphoreTake(i2c->mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (i2c_start(i2c->i2c_id, addr, false) != pdPASS) {
+            print_uart("Error al iniciar la comunicación (SDS).\n\r");
+            i2c_send_stop(i2c->i2c_id); // Detener la comunicación
+            xSemaphoreGive(i2c->mutex);
+            return pdFALSE;
+        }
+        for (size_t i = 0; i < length; i++) {
+            if (i2c_write(i2c->i2c_id, data[i]) != pdPASS) {
+                print_uart("Error al enviar datos (SDS - write).\n\r");
+                i2c_send_stop(i2c->i2c_id); // Detener la comunicación
+                xSemaphoreGive(i2c->mutex);
+                return pdFALSE;
+            }
+        }
+        i2c_send_stop(i2c->i2c_id);
+        //i2c_clear_stop(i2c->i2c_id);
+        xSemaphoreGive(i2c->mutex);
+    } else {
+        print_uart("Error: No se pudo obtener el mutex.\n\r");
+        return pdFALSE;
+    }
+    
+    return pdPASS;
+}
+
 
 
 
@@ -416,48 +409,109 @@ void print_uart(const char *s){
     UART_puts(USART1, s, pdMS_TO_TICKS(500));
 }
 
-/**
- * @brief Tarea para escribir bytes por I2C1 en modo WRITE
- *        Envia un conteo creciente a partir de 0
- * 
- * @param pvParameters Dirección I2C del esclavo
- * @return void
- */
-void test_write_i2c(void *pvParameters) {
-    uint32_t i2c_id = I2C1;
-    uint8_t slave_addr = (uint8_t) pvParameters;
-    uint8_t data[I2C_MAX_BUFFER]; // Arreglo para almacenar datos a enviar
-    size_t length = sizeof(data); // Longitud del arreglo
 
-    for (size_t i = 0; i < length; i++) {
-        data[i] = i; // Asignar valores crecientes
-    }
-
-    for (;;) {
-        if (write_data(i2c_id, slave_addr, data, length) == pdFALSE) {
-            print_uart("Error: No se pudo enviar el mensaje.\n\r");
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(2500)); // Esperar 2.5 segundos antes de la próxima solicitud
-    }
-}
 
 
 /**
- * @brief Tarea para solicitar bytes por I2C1 en modo READ
- *       Solicita un byte al esclavo y lo imprime por UART
+ * @brief Tarea de testing para solicitar la temperatura y ebviarla al Arduino
+ *       Solicita tres bytes al HTU21D, calcula la temperatura y la envía al Arduino, todo por I2C
  * 
- * @param pvParameters Dirección I2C del esclavo
+ * @param pvParameters Sin utilizar
  * @return void
  */
 
 void test_request_i2c(void *pvParameters) {
+    uint32_t i2c_id = I2C1;
+    i2c_t *i2c = get_i2c(i2c_id);
+    if (i2c == NULL) {
+        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
+        vTaskDelete(NULL);
+    }
+    
+    if(reset_htu21d(i2c_id) != pdPASS){
+        print_uart("Error: No se pudo realizar el reset.\n\r");
+        vTaskDelete(NULL);
+    }
 
     for (;;) {
-        if (i2c_request_from(I2C1, 0x04, 5) == pdFALSE) {
+        if (request_htu21d(i2c_id, TRIGGER_TEMP_MEASURE_NOHOLD) != pdPASS) {
             print_uart("Error: No se pudo realizar la solicitud.\n\r");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(2500)); // Esperar 2.5 segundos antes de la próxima solicitud
+        vTaskDelay(pdMS_TO_TICKS(2500));
+
+        // Desencolo response
+        uint8_t data[3];
+        uint8_t data_aux;
+        
+        for(int i = 0; i < 3; i++){
+            if(xQueueReceive(i2c->responses, &data_aux, pdMS_TO_TICKS(100)) != pdTRUE){
+                print_uart("Error: No se pudo recibir el mensaje.");
+                vTaskDelete(NULL);
+            }
+            data[i] = data_aux;
+        }
+
+        uint16_t rawTemperature = (data[0] << 8) | data[1];
+        rawTemperature &= 0xFFFC;
+
+        float temp = -46.85 + (175.72 * rawTemperature / 65536.0);  // Convertimos los datos a temperatura en grados Celsius
+        char temp_str[20]; // Asegúrate de que el tamaño sea suficiente para la cadena
+   
+        snprintf(temp_str, sizeof(temp_str), "Temp: %.2f °C", temp); // Formatea la temperatura a dos decimales como cadena
+    
+        if(print_i2c(temp_str) != pdPASS){
+            print_uart("Error: No se pudo enviar el mensaje temp_str.\r\n");
+        }
+        
+
+        vTaskDelay(pdMS_TO_TICKS(2500));
+        memset(temp_str, 0, sizeof(temp_str));
+
+        if (request_htu21d(i2c_id, TRIGGER_HUMD_MEASURE_NOHOLD) != pdPASS) {
+            print_uart("Error: No se pudo realizar la solicitud.");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(2500));
+
+        // Desencolo response
+        for(int i = 0; i < 3; i++){
+            if(xQueueReceive(i2c->responses, &data_aux, pdMS_TO_TICKS(100)) != pdTRUE){
+                print_uart("Error: No se pudo recibir el mensaje.");
+                vTaskDelete(NULL);
+            }
+            data[i] = data_aux;
+        }
+
+        uint16_t rawHumidity = (data[0] << 8) | data[1];  // Leemos los dos primeros bytes
+
+        rawHumidity &= 0xFFFC;  // Aplicamos máscara para quitar los bits de estado
+        float hum = -6.0 + (125.0 * rawHumidity / 65536.0);  // Convertimos los datos a porcentaje de humedad
+
+        snprintf(temp_str, sizeof(temp_str), "Hum: %.2f %%", hum); // Formatea la temperatura a dos decimales como cadena
+        if(print_i2c(temp_str) != pdPASS){
+            print_uart("Error: No se pudo enviar el mensaje hum_str.");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(2500));
+        memset(temp_str, 0, sizeof(temp_str));
+
     }
+}
+
+/** 
+ * @brief Imprimir un mensaje por I2C1 al esclavo con dirección 0x04
+ * 
+ * @param data Cadena de caracteres a enviar
+ * @return pdPASS si la comunicación fue exitosa, pdFALSE si hubo un error
+ * 
+ * @note Esta función es llamada por la tarea de testing de I2C
+ */
+
+BaseType_t print_i2c(const char *data) {
+    // Inicio la comunicación -> Envío el comando -> Envío los datos -> Detengo la comunicación
+    uint8_t buffer[1 + strlen(data)];
+    buffer[0] = 0x01;
+    memcpy(&buffer[1], data, strlen(data));
+    return i2c_send_data_slave(I2C1, 0x04, buffer, strlen(data) + 1);
 }

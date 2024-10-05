@@ -90,16 +90,49 @@ static msg_t dequeue_i2c_msg(QueueHandle_t queue) {
 }
 
 /**
+ * @brief Reinicia el periférico I2C especificado
+ * 
+ * 
+ */
+void reset_i2c_peripheral(uint32_t i2c_id) {
+    // Deshabilitar el periférico I2C
+    I2C_CR1(i2c_id) &= ~I2C_CR1_PE;
+    
+    // Esperar un breve momento (opcional)
+    for (volatile int i = 0; i < 1000; i++);
+    
+    // Volver a habilitar el periférico I2C
+    I2C_CR1(i2c_id) |= I2C_CR1_PE;
+}
+
+
+/**
  * @brief Espera hasta que el periférico I2C especificado esté listo
  * 
  * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
- * @return void
+ * @return bool true si el bus está listo, false si hubo un timeout
  */
 
-static void i2c_wait_until_ready(uint32_t i2c_id) {
+static bool i2c_wait_until_ready(uint32_t i2c_id) {
+    uint32_t start_time = xTaskGetTickCount();  // Obtener el tiempo actual del sistema (FreeRTOS)
+
+    // Espera hasta que el bus esté listo o el timeout expire
     while (I2C_SR2(i2c_id) & I2C_SR2_BUSY) {
-        taskYIELD();
+        if ((xTaskGetTickCount() - start_time) > pdMS_TO_TICKS(I2C_TIMEOUT_MS)) {
+            // Si el timeout ha sido excedido
+            reset_i2c_peripheral(i2c_id);  // Reiniciar el periférico I2C
+            if (I2C_SR2(i2c_id) & I2C_SR2_BUSY) {
+                // El bus sigue ocupado, indicar fallo
+                return false;
+            } else {
+                // El bus fue liberado correctamente
+                return true;
+            }
+        }
+        taskYIELD();  // Ceder el control a otras tareas mientras se espera
     }
+
+    return true;  // Indicar que el bus está listo
 }
 
 /**
@@ -111,7 +144,9 @@ static void i2c_wait_until_ready(uint32_t i2c_id) {
  * @return pdPASS si la comunicación fue exitosa, pdFALSE si hubo un error
  */
 static BaseType_t i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
-    i2c_wait_until_ready(i2c_id);
+    if(!i2c_wait_until_ready(i2c_id))
+        return pdFALSE;
+        
     i2c_send_start(i2c_id);
 
     // Esperar hasta que el bit de Start esté establecido
@@ -146,23 +181,37 @@ static BaseType_t i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
  * @return pdPASS si el byte fue enviado, pdFALSE si hubo un error
  */
 static BaseType_t i2c_write(uint32_t i2c_id, uint8_t data) {
+    TickType_t start_time = xTaskGetTickCount();  // Guardamos el tiempo de inicio
+    TickType_t timeout = pdMS_TO_TICKS(I2C_TIMEOUT_MS);  // Establecemos el tiempo de timeout
+
     i2c_send_data(i2c_id, data);
-    // Esperar hasta que se complete la transferencia de datos
+
+    // Esperar hasta que se complete la transferencia de datos o el timeout expire
     while (!(I2C_SR1(i2c_id) & I2C_SR1_BTF)) {
-        taskYIELD();
+        // Verificamos si el timeout ha expirado
+        if ((xTaskGetTickCount() - start_time) > timeout) {
+            // Timeout: limpiar el registro I2C y devolver error
+            i2c_peripheral_disable(i2c_id);  // Desactivar I2C
+            i2c_peripheral_enable(i2c_id);   // Rehabilitar I2C para restablecer los registros
+            return pdFALSE;
+        }
+        taskYIELD();  // Ceder el control a otras tareas mientras esperamos
     }
 
     // Comprobar el bit de ACK después de la transferencia
     if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
         // No se recibió ACK del esclavo (NACK)
-        // Limpia la bandera de fallo de ACK
+        // Limpiar la bandera de fallo de ACK
         I2C_SR1(i2c_id) &= ~I2C_SR1_AF;
-        // Manejar el error de NACK aquí (por ejemplo, reenviar el mensaje o detener la comunicación)
+        // Limpieza opcional del controlador I2C, si es necesario
+        i2c_peripheral_disable(i2c_id);
+        i2c_peripheral_enable(i2c_id);
         return pdFALSE;
     }
 
     return pdPASS;
 }
+
 
 /**
  * @brief Lee un byte de datos por I2C en modo READ
@@ -184,6 +233,50 @@ static uint8_t i2c_read(uint32_t i2c_id, bool last) {
     }
 
     return i2c_get_data(i2c_id);
+}
+
+/**
+ * @brief Verifica la conexión con un esclavo I2C en la dirección especificada
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param direccion_esclavo Dirección de 8 bits del esclavo I2C
+ * @return pdPASS si la conexión fue exitosa, pdFALSE si hubo un error
+ */
+
+static BaseType_t verificar_conexion_i2c(uint32_t i2c_id, uint8_t direccion_esclavo) {
+    // Genera la condición de START
+    i2c_send_start(i2c_id);
+
+    // Esperar hasta que se envíe la condición de START correctamente
+    while (!(I2C_SR1(i2c_id) & I2C_SR1_SB)) {
+        taskYIELD();  // Liberar la CPU mientras espera
+    }
+
+    // Enviar la dirección del esclavo con el bit de escritura (dirección << 1)
+    i2c_send_7bit_address(i2c_id, direccion_esclavo, I2C_WRITE);
+
+    // Esperar a que se envíe la dirección y verificar la respuesta del esclavo
+    while (!(I2C_SR1(i2c_id) & I2C_SR1_ADDR)) {
+        // Si se detecta un NACK, el esclavo no está presente
+        if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
+            // Limpiar el bit de NACK
+            I2C_SR1(i2c_id) &= ~I2C_SR1_AF;
+            
+            // Enviar condición de STOP
+            i2c_send_stop(i2c_id);
+
+            return pdFALSE;  // El esclavo no respondió
+        }
+        taskYIELD();  // Liberar la CPU mientras espera
+    }
+
+    // Se recibió un ACK del esclavo, limpiamos la bandera de dirección recibida
+    (void) I2C_SR2(i2c_id);
+
+    // Enviar condición de STOP
+    i2c_send_stop(i2c_id);
+
+    return pdPASS;  // El esclavo respondió correctamente
 }
 
 /**************************************** FUNCIONES PUBLICAS ****************************************/
@@ -424,18 +517,21 @@ void test_request_i2c(void *pvParameters) {
     uint32_t i2c_id = I2C1;
     i2c_t *i2c = get_i2c(i2c_id);
     if (i2c == NULL) {
-        print_uart("Error: No se pudo obtener el periférico I2C.\n\r");
+        print_uart("Error: No se pudo obtener el periférico I2C. Eliminando tarea...\n\r");
         vTaskDelete(NULL);
     }
     
-    if(reset_htu21d(i2c_id) != pdPASS){
-        print_uart("Error: No se pudo realizar el reset.\n\r");
+    while(reset_htu21d(i2c_id) != pdPASS){
+        print_uart("Error: No se pudo realizar el reset del sensor. Eliminando tarea...\n\r");
         vTaskDelete(NULL);
     }
 
     for (;;) {
+        print_uart("Comenzando solicitud de temperatura y humedad.\n\r");
         if (request_htu21d(i2c_id, TRIGGER_TEMP_MEASURE_NOHOLD) != pdPASS) {
-            print_uart("Error: No se pudo realizar la solicitud.\n\r");
+            print_uart("Error: No se pudo realizar la solicitud de temperatura.\n\r");
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
         }
 
         vTaskDelay(pdMS_TO_TICKS(2500));
@@ -443,13 +539,19 @@ void test_request_i2c(void *pvParameters) {
         // Desencolo response
         uint8_t data[3];
         uint8_t data_aux;
-        
+        bool error = false;
+
         for(int i = 0; i < 3; i++){
             if(xQueueReceive(i2c->responses, &data_aux, pdMS_TO_TICKS(100)) != pdTRUE){
-                print_uart("Error: No se pudo recibir el mensaje.");
-                vTaskDelete(NULL);
+                print_uart("Error: No se pudo recibir el mensaje de temperatura.");
+                error = true;
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                break;
             }
             data[i] = data_aux;
+        }
+        if(error){
+            continue;
         }
 
         uint16_t rawTemperature = (data[0] << 8) | data[1];
@@ -462,6 +564,7 @@ void test_request_i2c(void *pvParameters) {
     
         if(print_i2c(temp_str) != pdPASS){
             print_uart("Error: No se pudo enviar el mensaje temp_str.\r\n");
+            continue;
         }
         
 
@@ -469,7 +572,9 @@ void test_request_i2c(void *pvParameters) {
         memset(temp_str, 0, sizeof(temp_str));
 
         if (request_htu21d(i2c_id, TRIGGER_HUMD_MEASURE_NOHOLD) != pdPASS) {
-            print_uart("Error: No se pudo realizar la solicitud.");
+            print_uart("Error: No se pudo realizar la solicitud de humedad.");
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
         }
 
         vTaskDelay(pdMS_TO_TICKS(2500));
@@ -477,10 +582,16 @@ void test_request_i2c(void *pvParameters) {
         // Desencolo response
         for(int i = 0; i < 3; i++){
             if(xQueueReceive(i2c->responses, &data_aux, pdMS_TO_TICKS(100)) != pdTRUE){
-                print_uart("Error: No se pudo recibir el mensaje.");
-                vTaskDelete(NULL);
+                print_uart("Error: No se pudo recibir el mensaje de humedad.");
+                error = true;
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                break;
             }
             data[i] = data_aux;
+        }
+
+        if(error){
+            continue;
         }
 
         uint16_t rawHumidity = (data[0] << 8) | data[1];  // Leemos los dos primeros bytes
@@ -491,16 +602,17 @@ void test_request_i2c(void *pvParameters) {
         snprintf(temp_str, sizeof(temp_str), "Hum: %.2f %%", hum); // Formatea la temperatura a dos decimales como cadena
         if(print_i2c(temp_str) != pdPASS){
             print_uart("Error: No se pudo enviar el mensaje hum_str.");
+            continue;
         }
 
         vTaskDelay(pdMS_TO_TICKS(2500));
         memset(temp_str, 0, sizeof(temp_str));
-
+        print_uart("Solicitud de temperatura y humedad completada.\n\r");
     }
 }
 
 /** 
- * @brief Imprimir un mensaje por I2C1 al esclavo con dirección 0x04
+ * @brief Imprimir un mensaje por I2C1 al esclavo con dirección I2C_ARDUINO_ADDRESS
  * 
  * @param data Cadena de caracteres a enviar
  * @return pdPASS si la comunicación fue exitosa, pdFALSE si hubo un error
@@ -513,5 +625,5 @@ BaseType_t print_i2c(const char *data) {
     uint8_t buffer[1 + strlen(data)];
     buffer[0] = 0x01;
     memcpy(&buffer[1], data, strlen(data));
-    return i2c_send_data_slave(I2C1, 0x04, buffer, strlen(data) + 1);
+    return i2c_send_data_slave(I2C1, I2C_ARDUINO_ADDRESS, buffer, strlen(data) + 1);
 }

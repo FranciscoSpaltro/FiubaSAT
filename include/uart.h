@@ -41,7 +41,7 @@ void taskUART_transmit(uint32_t usart_id);
  * @param data Puntero a la variable donde se almacenará el dato recibido.
  * @return pdPASS si la recepción fue exitosa, pdFAIL en caso contrario.
  */
-BaseType_t UART_receive(uint32_t usart_id, uint16_t *data);
+BaseType_t UART_receive(uint32_t usart_id, uint8_t *data);
 
 /**
  * @brief Limpia la cola de recepción de UART.
@@ -78,7 +78,7 @@ uint16_t UART_puts(uint32_t usart_id, const char *s, TickType_t xTicksToWait);
  * @param xTicksToWait Tiempo de espera para encolar el carácter.
  * @return pdPASS si el carácter se encoló exitosamente, pdFAIL en caso contrario.
  */
-BaseType_t UART_putchar(uint32_t usart_id, uint16_t ch, TickType_t xTicksToWait);
+BaseType_t UART_putchar(uint32_t usart_id, uint8_t ch, TickType_t xTicksToWait);
 
 /**
  * @brief Imprime el contenido del buffer de UART.

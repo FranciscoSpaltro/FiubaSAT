@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 #define SIZE_BUFFER 512  // Buffer sizes
 
 /**
@@ -197,14 +196,14 @@ void taskUART_transmit(uint32_t usart_id) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return;
 
-    uint16_t ch;
+    uint8_t ch;
     for (;;) {
             while (xQueueReceive(uart->txq, &ch, pdMS_TO_TICKS(500)) == pdPASS) {
                 // Esperar hasta que el registro de transmisión esté vacío
                 while (!usart_get_flag(uart->usart, USART_SR_TXE))
                     taskYIELD(); // Ceder la CPU hasta que esté listo
                 // Enviar el byte a través de USART
-                usart_send(uart->usart, ch);
+                usart_send(uart->usart, (uint8_t)ch);
             }
         // Esperar 50 ms antes de la siguiente iteración
         vTaskDelay(pdMS_TO_TICKS(200));
@@ -218,7 +217,7 @@ void taskUART_transmit(uint32_t usart_id) {
  * @param data Puntero a la variable donde se almacenará el dato recibido.
  * @return pdTRUE si el dato fue recibido exitosamente, pdFAIL en caso contrario.
  */
-BaseType_t UART_receive(uint32_t usart_id, uint16_t *data) {
+BaseType_t UART_receive(uint32_t usart_id, uint8_t *data) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return pdFAIL;
 
@@ -281,7 +280,7 @@ uint16_t UART_puts(uint32_t usart_id, const char *s, TickType_t xTicksToWait) {
  * @param xTicksToWait Tiempo de espera para obtener el mutex.
  * @return pdPASS si el carácter se envió exitosamente, pdFAIL en caso contrario.
  */
-BaseType_t UART_putchar(uint32_t usart_id, uint16_t ch, TickType_t xTicksToWait) {
+BaseType_t UART_putchar(uint32_t usart_id, uint8_t ch, TickType_t xTicksToWait) {
     uart_t *uart = get_uart(usart_id);
     if (uart == NULL) return pdFAIL;
     
@@ -351,7 +350,7 @@ void UART_print_buffer(uint32_t usart_id) {
         break;
     }
 
-    uint16_t data;
+    uint8_t data;
     for (uint16_t i = 0; i < items_in_queue; i++) {
         if (pop(uart->rxq, &data) == pdPASS) {
             UART_putchar(USART3, data, pdMS_TO_TICKS(500));
@@ -378,7 +377,6 @@ BaseType_t UART_semaphore_take(uint32_t usart_id, TickType_t ticks_to_wait) {
 
     return xSemaphoreTake(uart->semaphore, ticks_to_wait);
 }
-
 
 /**
  * @brief Libera el semáforo de UART.
@@ -435,17 +433,17 @@ static void usart_generic_isr(uint32_t usart_id) {
     if (uart == NULL) return;
 
     if (usart_get_flag(USART1, USART_SR_RXNE)) {
-        uint16_t ndata = (uint16_t)usart_recv(USART1);
+        uint8_t ndata = (uint8_t)usart_recv(USART1);
         push(uart->rxq, ndata);
     }
 
     if (usart_get_flag(USART2, USART_SR_RXNE)) {
-        uint16_t ndata = (uint16_t)usart_recv(USART2);
+        uint8_t ndata = (uint8_t)usart_recv(USART2);
         push(uart->rxq, ndata);
     }
 
     if (usart_get_flag(USART3, USART_SR_RXNE)) {
-        uint16_t ndata = (uint16_t)usart_recv(USART3);
+        uint8_t ndata = (uint8_t)usart_recv(USART3);
         push(uart->rxq, ndata);
     }
 }

@@ -52,7 +52,7 @@ uint16_t serial_sendable(circular_buffer_t *cbuff);
  * @param data Dato a transmitir.
  * @return BaseType_t pdTRUE si se pudo insertar el dato, pdFALSE si el buffer está lleno.
  */
-BaseType_t serial_write(circular_buffer_t *cbuff, const uint16_t data);
+BaseType_t serial_write(circular_buffer_t *cbuff, const uint8_t data);
 
 /**
  * @brief Carga una cadena en el buffer de transmisión para enviar por la USART.
@@ -74,7 +74,7 @@ uint16_t serial_puts(circular_buffer_t *cbuff, const char *str);
  * @param data Dato a insertar.
  * @return BaseType_t pdTRUE si se pudo insertar el dato, pdFALSE si el buffer está lleno.
  */
-BaseType_t push(circular_buffer_t *buff, const uint16_t data);
+BaseType_t push(circular_buffer_t *buff, const uint8_t data);
 
 /**
  * @brief Lee un dato del buffer de recepción.
@@ -85,7 +85,7 @@ BaseType_t push(circular_buffer_t *buff, const uint16_t data);
  * @param data Puntero donde se almacenará el dato extraído.
  * @return BaseType_t pdPASS si se pudo extraer el dato, pdFAIL si el buffer está vacío.
  */
-BaseType_t pop(circular_buffer_t *buff, uint16_t *data);
+BaseType_t pop(circular_buffer_t *buff, uint8_t *data);
 
 /* Otras declaraciones de funciones aquí */
 

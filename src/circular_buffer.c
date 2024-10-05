@@ -1,5 +1,4 @@
 #include "circular_buffer.h"
-#include "uart.h"
 
 #include <string.h>
 
@@ -12,7 +11,7 @@
 struct circular_buffer_t {
     uint16_t in;      // Índice de entrada, incrementa cuando se añade un dato
     uint16_t out;     // Índice de salida, incrementa cuando se lee un dato
-    uint16_t *data;   // Arreglo para almacenar los datos
+    uint8_t *data;   // Arreglo para almacenar los datos
     uint16_t mask;    // Máscara para hacer la operación circular (debe ser tamaño-1)
 };
 
@@ -32,7 +31,7 @@ circular_buffer_t *xCircularBufferCreate(uint16_t size) {
     }
 
     // Asignar memoria para almacenar los datos
-    cbuff->data = pvPortMalloc(size * sizeof(uint16_t));
+    cbuff->data = pvPortMalloc(size * sizeof(uint8_t));
     if (cbuff->data == NULL) {
         vPortFree(cbuff);  // Liberar la estructura si falla la asignación de datos
         return NULL;
@@ -90,13 +89,13 @@ uint16_t serial_sendable(circular_buffer_t *cbuff) {
  * @param data Dato a escribir en el buffer.
  * @return pdTRUE si se escribe exitosamente, pdFALSE si el buffer está lleno.
  */
-BaseType_t serial_write(circular_buffer_t *cbuff, const uint16_t data) {
+BaseType_t serial_write(circular_buffer_t *cbuff, const uint8_t data) {
     BaseType_t result = pdFALSE;
     if (cbuff != NULL) {
         result = push(cbuff, data);  // Escribir en el buffer
         // Aquí se podría habilitar la interrupción de transmisión si fuera necesario
         /*
-        if ((uint16_t)(cbuff->in - cbuff->out) == 1) {
+        if ((uint8_t)(cbuff->in - cbuff->out) == 1) {
             usart_enable_tx_interrupt(usart_id);
         }
         */
@@ -128,7 +127,7 @@ uint16_t serial_puts(circular_buffer_t *cbuff, const char *str) {
  * @param data Dato a insertar.
  * @return pdTRUE si se inserta exitosamente, pdFALSE si el buffer está lleno.
  */
-BaseType_t push(circular_buffer_t *buff, const uint16_t data) {
+BaseType_t push(circular_buffer_t *buff, const uint8_t data) {
     BaseType_t result = pdFALSE;
     // Verificar si hay espacio en el buffer (FIFO no lleno)
     if ((uint16_t)(buff->in - buff->out) < buff->mask) {
@@ -146,7 +145,7 @@ BaseType_t push(circular_buffer_t *buff, const uint16_t data) {
  * @param data Puntero donde se almacenará el dato extraído.
  * @return pdPASS si se extrae exitosamente, pdFAIL si el buffer está vacío.
  */
-BaseType_t pop(circular_buffer_t *buff, uint16_t *data) {
+BaseType_t pop(circular_buffer_t *buff, uint8_t *data) {
     // Verificar si hay datos en el buffer
     if (buff->in != buff->out) {
         *data = buff->data[buff->out & buff->mask];  // Extraer el dato en la posición calculada

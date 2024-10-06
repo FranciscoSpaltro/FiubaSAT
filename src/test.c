@@ -46,6 +46,25 @@ static void test_uart_available_data(uint32_t usart_id) {
     usart_enable_rx_interrupt(usart_id);
 }
 
+static int test_uart_semaphore(uint32_t usart_id) {
+    // Se espera a que haya datos disponibles en la cola de recepción
+    UART_semaphore_release(usart_id);
+
+    if(UART_semaphore_take(usart_id, pdMS_TO_TICKS(100)) == pdFALSE){
+        UART_semaphore_release(usart_id);
+        return 1;
+    }
+    
+    if(UART_semaphore_take(usart_id, pdMS_TO_TICKS(500)) == pdTRUE){
+        UART_semaphore_release(usart_id);
+        return 2;
+    }
+
+    // Se libera el semáforo
+    UART_semaphore_release(usart_id);
+    return 0;
+}
+
 static void test_gps_registros(uint32_t usart_id) {
     char buffer[SIZE_BUFFER_GPS]; // Buffer para almacenar los datos a enviar
     char GGA[100]; // Buffer para almacenar el mensaje GGA
@@ -68,26 +87,7 @@ static void test_gps_registros(uint32_t usart_id) {
     UART_clear_rx_queue(usart_id, pdMS_TO_TICKS(100));
 }
 
-static int test_uart_semaphore(uint32_t usart_id) {
-    // Se espera a que haya datos disponibles en la cola de recepción
-    UART_semaphore_release(usart_id);
-
-    if(UART_semaphore_take(usart_id, pdMS_TO_TICKS(100)) == pdFALSE){
-        UART_semaphore_release(usart_id);
-        return 1;
-    }
-    
-    if(UART_semaphore_take(usart_id, pdMS_TO_TICKS(500)) == pdTRUE){
-        UART_semaphore_release(usart_id);
-        return 2;
-    }
-
-    // Se libera el semáforo
-    UART_semaphore_release(usart_id);
-    return 0;
-}
-
-void taskTest(TaskHandle_t test_handle) {
+void taskTest(void *pvParameters) {
     int resultado = 0;
     UART_puts(USART3, "Tarea de Test iniciada\r\n", pdMS_TO_TICKS(100));
     for (;;) {
@@ -95,7 +95,7 @@ void taskTest(TaskHandle_t test_handle) {
         resultado = test_uart_semaphore(USART1);
         
         if (resultado == 0) {
-            UART_puts(USART3, "Test Semaphore runned\r\n", pdMS_TO_TICKS(100));
+            UART_puts(USART3, "Test Semaphore runned successfully\r\n", pdMS_TO_TICKS(100));
         } else if (resultado == 1) {
             UART_puts(USART3, "Test Semaphore failed. No se pudo tomar.\r\n", pdMS_TO_TICKS(100));
         } else if (resultado == 2) { 
@@ -110,7 +110,7 @@ void taskTest(TaskHandle_t test_handle) {
 
         vTaskDelay(pdMS_TO_TICKS(1000));
 
-        //test_gps_registros(USART1);
+        test_gps_registros(USART1);
         
         vTaskDelay(pdMS_TO_TICKS(500));
         

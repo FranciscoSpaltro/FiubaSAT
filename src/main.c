@@ -8,6 +8,7 @@
 #include "NMEA.h"
 #include "blink.h"
 #include "test.h"
+#include "main.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -17,11 +18,9 @@
 #include <libopencm3/stm32/usart.h>
 
 // Handle para la tarea del parpadeo y test
-TaskHandle_t blink_handle;
-TaskHandle_t test_handle;
 
 // Delay para el parpadeo
-uint32_t blinkDelay = 500;
+uint32_t blinkDelay = 250;
 
 #define SIZE_BUFFER_RX1 512
 
@@ -130,17 +129,17 @@ int main(void) {
     if(UART_setup(USART1, 9600) != pdPASS) return -1;
     if(UART_setup(USART2, 115200) != pdPASS) return -1;
     if(UART_setup(USART3, 115200) != pdPASS) return -1;
+    
+    // Crear tareas para Test
+    xTaskCreate(taskTest, "Test", 128, NULL, 2, &test_handle);  // Crear tarea para Test
+    
+    // Crear tarea para parpadear el LED
+    xTaskCreate(taskBlink, "LED", 128, (void *)blinkDelay, 2, &blink_handle);  // Crear tarea para parpadear el LED
 
     // Creación de tareas genéricas para transmisión UART
     xTaskCreate(taskUART_transmit, "UART1 TX", 256, (void *)USART1, 2, NULL);
     xTaskCreate(taskUART_transmit, "UART2 TX", 256, (void *)USART2, 2, NULL);
     xTaskCreate(taskUART_transmit, "UART3 TX", 256, (void *)USART3, 2, NULL);
-    
-    // Crear tareas para Test
-    xTaskCreate(taskTest, "Test", 128, (void *)test_handle, 2, &test_handle);  // Crear tarea para Test
-    
-    // Crear tarea para parpadear el LED
-    xTaskCreate(taskBlink, "LED", 128, (void *)blinkDelay, 2, &blink_handle);  // Crear tarea para parpadear el LED
 
     // Creación de tareas genéricas para recepción UART
     xTaskCreate(taskUART1_GPS, "UART1 GPS", 1024, (void *)USART1, 2, NULL);

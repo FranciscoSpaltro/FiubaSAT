@@ -4,7 +4,8 @@
 
 #include "uart.h"
 #include <stdint.h>
+#include "main.h"
 
-void taskTest(TaskHandle_t test_handle);
+void taskTest(void *pvParameters);
 
 #endif

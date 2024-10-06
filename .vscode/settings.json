@@ -23,7 +23,8 @@
         "*.copyasm": "hlasm",
         "*.macasm": "hlasm",
         "*.bms": "hlasm",
-        "freertos.h": "c"
+        "freertos.h": "c",
+        "stdio.h": "c"
     },
     "C_Cpp.default.compilerPath": ""
 }

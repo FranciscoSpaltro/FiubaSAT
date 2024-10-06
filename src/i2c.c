@@ -135,6 +135,59 @@ static bool i2c_wait_until_ready(uint32_t i2c_id) {
     return true;  // Indicar que el bus está listo
 }
 
+
+/**
+ * @brief Espera hasta que el bit de start esté establecido
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @return bool true si el bus está listo, false si hubo un timeout
+ */
+
+static bool i2c_wait_until_start(uint32_t i2c_id) {
+    TickType_t start_time = xTaskGetTickCount();  // Obtener el tiempo actual del sistema (FreeRTOS)
+    TickType_t timeout = pdMS_TO_TICKS(I2C_TIMEOUT_MS);  // Establecer el tiempo de timeout
+
+    // Espera hasta que el bit de start esté establecido o el timeout expire
+    while (!(I2C_SR1(i2c_id) & I2C_SR1_SB)) {
+        if ((xTaskGetTickCount() - start_time) > pdMS_TO_TICKS(I2C_TIMEOUT_MS)) {
+            return false;  // Indicar que hubo un timeout
+        }
+        taskYIELD();  // Ceder el control a otras tareas mientras se espera
+    }
+
+    return true;  // Indicar que el bus está listo
+}
+
+/**
+ * @brief Espera hasta que el bit de address esté establecido
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @return bool true si el bus está listo, false si hubo un timeout
+ */
+
+static bool i2c_wait_until_address(uint32_t i2c_id) {
+    TickType_t start_time = xTaskGetTickCount();  // Obtener el tiempo actual del sistema (FreeRTOS)
+    TickType_t timeout = pdMS_TO_TICKS(I2C_TIMEOUT_MS);  // Establecer el tiempo de timeout
+
+    // Espera hasta que el bit de start esté establecido o el timeout expire
+    while (!(I2C_SR1(i2c_id) & I2C_SR1_ADDR)) {
+        if ((xTaskGetTickCount() - start_time) > pdMS_TO_TICKS(I2C_TIMEOUT_MS)) {
+            return false;  // Indicar que hubo un timeout
+        }
+
+        // Verificar si ocurrió un NACK
+        if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
+            I2C_SR1(i2c_id) &= ~I2C_SR1_AF; // Limpiar bandera de fallo de ACK
+            i2c_send_stop(i2c_id); // Detener comunicación
+            return false; // Indicar que la comunicación falló
+        }
+
+        taskYIELD();  // Ceder el control a otras tareas mientras se espera
+    }
+
+    return true;  // Indicar que el bus está listo
+}
+
 /**
  * @brief Inicia una comunicación I2C con el esclavo especificado en modo lectura/escritura
  * 
@@ -150,21 +203,18 @@ static BaseType_t i2c_start(uint32_t i2c_id, uint8_t addr, bool read) {
     i2c_send_start(i2c_id);
 
     // Esperar hasta que el bit de Start esté establecido
-    while (!(I2C_SR1(i2c_id) & I2C_SR1_SB)) {
-        taskYIELD();
+    if (!i2c_wait_until_start(i2c_id)) {
+        print_uart("Error: Timeout al esperar el bit de Start.\n\r");
+        return pdFALSE;  // Indicar que hubo un timeout
     }
+    
 
     i2c_send_7bit_address(i2c_id, addr, read ? I2C_READ : I2C_WRITE);
 
     // Esperar hasta que el bit de Address esté establecido
-    while (!(I2C_SR1(i2c_id) & I2C_SR1_ADDR)) {
-        // Verificar si ocurrió un NACK
-        if (I2C_SR1(i2c_id) & I2C_SR1_AF) {
-            I2C_SR1(i2c_id) &= ~I2C_SR1_AF; // Limpiar bandera de fallo de ACK
-            i2c_send_stop(i2c_id); // Detener comunicación
-            return pdFALSE; // Indicar que la comunicación falló
-        }
-        taskYIELD();
+    if (!i2c_wait_until_address(i2c_id)) {
+        print_uart("Error: Timeout al esperar el bit de Address.\n\r");
+        return pdFALSE;  // Indicar que hubo un timeout
     }
 
     // Limpiar la bandera de dirección
@@ -430,25 +480,75 @@ static BaseType_t reset_htu21d(uint32_t i2c_id){
         return pdFALSE;
     }
 
-    if (xSemaphoreTake(i2c->mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        if (i2c_start(i2c->i2c_id, HTU21D_ADDRESS, false) == pdPASS) {
-            i2c_write(i2c->i2c_id, SOFT_RESET);
-            i2c_send_stop(i2c->i2c_id);
-            vTaskDelay(pdMS_TO_TICKS(15));
+    for (int retry_count = 0; retry_count < 3; retry_count++) {
+        print_uart("DEBUG1\n\r");
+        if (xSemaphoreTake(i2c->mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            print_uart("DEBUG2\n\r");
+            if (i2c_start(i2c->i2c_id, HTU21D_ADDRESS, false) == pdPASS) {
+                print_uart("DEBUG3\n\r");
+                i2c_write(i2c->i2c_id, SOFT_RESET);
+                print_uart("DEBUG4\n\r");
+                i2c_send_stop(i2c->i2c_id);
+                print_uart("DEBUG5\n\r");
+                vTaskDelay(pdMS_TO_TICKS(15));
+                print_uart("DEBUG6\n\r");
+                xSemaphoreGive(i2c->mutex);
+                print_uart("DEBUG7\n\r");
+                vTaskDelay(pdMS_TO_TICKS(15));
+                print_uart("DEBUG8\n\r");
+                return pdTRUE;  // Comunicación exitosa
+            } else {
+                print_uart("DEBUG9\n\r");
+                i2c_send_stop(i2c->i2c_id);
+                print_uart("DEBUG10\n\r");
+                xSemaphoreGive(i2c->mutex);
+                print_uart("DEBUG11\n\r");
+                vTaskDelay(pdMS_TO_TICKS(100));  // Espera antes del siguiente intento
+                print_uart("DEBUG12\n\r");
+            }
         } else {
-            print_uart("Error al iniciar comunicacion (reset).\n\r");
-            i2c_send_stop(i2c->i2c_id);
-            xSemaphoreGive(i2c->mutex);
-            return pdFALSE;
+            print_uart("DEBUG13\n\r");
+            vTaskDelay(pdMS_TO_TICKS(100));  // Espera antes del siguiente intento
+            print_uart("DEBUG14\n\r");
         }
-
-        xSemaphoreGive(i2c->mutex);
-    } else {
-        print_uart("Error: No se pudo obtener el mutex.\n\r");
-        return pdFALSE;
+        print_uart("DEBUG15\n\r");
     }
-    return pdPASS;
+   
+    print_uart("DEBUG16\n\r");
+    return pdFALSE;
+
 }
+
+
+bool reset_sensor(i2c_t *i2c) {
+    int retry_count = 3;  // Número de intentos
+    while (retry_count > 0) {
+        if (xSemaphoreTake(i2c->mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            if (i2c_start(i2c->i2c_id, HTU21D_ADDRESS, false) == pdPASS) {
+                i2c_write(i2c->i2c_id, SOFT_RESET);
+                i2c_send_stop(i2c->i2c_id);
+                vTaskDelay(pdMS_TO_TICKS(15));
+                xSemaphoreGive(i2c->mutex);
+                return pdTRUE;  // Comunicación exitosa
+            } else {
+                print_uart("Error al iniciar comunicacion (reset).\n\r");
+                i2c_send_stop(i2c->i2c_id);
+                xSemaphoreGive(i2c->mutex);
+                retry_count--;
+                vTaskDelay(pdMS_TO_TICKS(100));  // Espera antes del siguiente intento
+            }
+        }
+    }
+    return pdFALSE;  // Falla tras múltiples intentos
+}
+
+
+
+
+
+
+
+
 
 static BaseType_t i2c_send_data_slave(uint32_t i2c_id, uint8_t addr, uint8_t* data, size_t length) {
     i2c_t *i2c = get_i2c(i2c_id);
@@ -522,7 +622,8 @@ void test_request_i2c(void *pvParameters) {
     }
     
     while(reset_htu21d(i2c_id) != pdPASS){
-        print_uart("Error: No se pudo realizar el reset del sensor. Eliminando tarea...\n\r");
+        print_uart("Error: No se pudo realizar el reset del sensor.\n\r");
+        print_i2c("Error: No se pudo realizar el reset del sensor.\r\n");
         vTaskDelete(NULL);
     }
 

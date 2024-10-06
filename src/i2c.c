@@ -481,75 +481,38 @@ static BaseType_t reset_htu21d(uint32_t i2c_id){
     }
 
     for (int retry_count = 0; retry_count < 3; retry_count++) {
-        print_uart("DEBUG1\n\r");
         if (xSemaphoreTake(i2c->mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            print_uart("DEBUG2\n\r");
             if (i2c_start(i2c->i2c_id, HTU21D_ADDRESS, false) == pdPASS) {
-                print_uart("DEBUG3\n\r");
                 i2c_write(i2c->i2c_id, SOFT_RESET);
-                print_uart("DEBUG4\n\r");
                 i2c_send_stop(i2c->i2c_id);
-                print_uart("DEBUG5\n\r");
                 vTaskDelay(pdMS_TO_TICKS(15));
-                print_uart("DEBUG6\n\r");
                 xSemaphoreGive(i2c->mutex);
-                print_uart("DEBUG7\n\r");
                 vTaskDelay(pdMS_TO_TICKS(15));
-                print_uart("DEBUG8\n\r");
                 return pdTRUE;  // Comunicación exitosa
             } else {
-                print_uart("DEBUG9\n\r");
                 i2c_send_stop(i2c->i2c_id);
-                print_uart("DEBUG10\n\r");
                 xSemaphoreGive(i2c->mutex);
-                print_uart("DEBUG11\n\r");
                 vTaskDelay(pdMS_TO_TICKS(100));  // Espera antes del siguiente intento
-                print_uart("DEBUG12\n\r");
             }
         } else {
-            print_uart("DEBUG13\n\r");
             vTaskDelay(pdMS_TO_TICKS(100));  // Espera antes del siguiente intento
-            print_uart("DEBUG14\n\r");
         }
-        print_uart("DEBUG15\n\r");
     }
    
-    print_uart("DEBUG16\n\r");
     return pdFALSE;
 
 }
 
-
-bool reset_sensor(i2c_t *i2c) {
-    int retry_count = 3;  // Número de intentos
-    while (retry_count > 0) {
-        if (xSemaphoreTake(i2c->mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            if (i2c_start(i2c->i2c_id, HTU21D_ADDRESS, false) == pdPASS) {
-                i2c_write(i2c->i2c_id, SOFT_RESET);
-                i2c_send_stop(i2c->i2c_id);
-                vTaskDelay(pdMS_TO_TICKS(15));
-                xSemaphoreGive(i2c->mutex);
-                return pdTRUE;  // Comunicación exitosa
-            } else {
-                print_uart("Error al iniciar comunicacion (reset).\n\r");
-                i2c_send_stop(i2c->i2c_id);
-                xSemaphoreGive(i2c->mutex);
-                retry_count--;
-                vTaskDelay(pdMS_TO_TICKS(100));  // Espera antes del siguiente intento
-            }
-        }
-    }
-    return pdFALSE;  // Falla tras múltiples intentos
-}
-
-
-
-
-
-
-
-
-
+/**
+ * @brief Envia datos por I2C al esclavo especificado
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @param addr Dirección de 8 bits del esclavo I2C
+ * @param data Datos a enviar
+ * @param length Longitud de los datos a enviar
+ * 
+ * @return pdPASS si la comunicación fue exitosa, pdFALSE si hubo un error
+ */
 static BaseType_t i2c_send_data_slave(uint32_t i2c_id, uint8_t addr, uint8_t* data, size_t length) {
     i2c_t *i2c = get_i2c(i2c_id);
     if (i2c == NULL) {
@@ -584,7 +547,22 @@ static BaseType_t i2c_send_data_slave(uint32_t i2c_id, uint8_t addr, uint8_t* da
 }
 
 
-
+/**
+ * @brief Resetea el bus I2C especificado
+ * 
+ * @param i2c_id Identificador de 32 bits del periférico I2C (I2C1 o I2C2)
+ * @return void
+ */
+static void i2c_reset_bus(uint32_t i2c_id) {
+    // Apagar el periférico I2C
+    i2c_peripheral_disable(i2c_id);
+    
+    // Breve espera
+    vTaskDelay(pdMS_TO_TICKS(100)); 
+    
+    // Reiniciar el periférico I2C
+    i2c_peripheral_enable(i2c_id);
+}
 
 
 
@@ -621,16 +599,29 @@ void test_request_i2c(void *pvParameters) {
         vTaskDelete(NULL);
     }
     
-    while(reset_htu21d(i2c_id) != pdPASS){
-        print_uart("Error: No se pudo realizar el reset del sensor.\n\r");
-        print_i2c("Error: No se pudo realizar el reset del sensor.\r\n");
-        vTaskDelete(NULL);
-    }
+    bool reset = false;
 
     for (;;) {
-        print_uart("Comenzando solicitud de temperatura y humedad.\n\r");
+        uint8_t data[3];
+        char data_str[20]; // Asegúrate de que el tamaño sea suficiente para la cadena
+        /*
+        if(reset){
+            i2c_reset_bus(i2c_id);
+            print_uart("Bus I2C reiniciado.\n\r");
+            reset = false;
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        */
+        if(reset_htu21d(i2c_id) != pdPASS){
+            print_uart("Error: No se pudo realizar el reset del sensor.\n\r");
+            reset = true;
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
         if (request_htu21d(i2c_id, TRIGGER_TEMP_MEASURE_NOHOLD) != pdPASS) {
             print_uart("Error: No se pudo realizar la solicitud de temperatura.\n\r");
+            reset = true;
             vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
@@ -638,7 +629,6 @@ void test_request_i2c(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(2500));
 
         // Desencolo response
-        uint8_t data[3];
         uint8_t data_aux;
         bool error = false;
 
@@ -651,7 +641,9 @@ void test_request_i2c(void *pvParameters) {
             }
             data[i] = data_aux;
         }
+
         if(error){
+            reset = true;
             continue;
         }
 
@@ -659,22 +651,22 @@ void test_request_i2c(void *pvParameters) {
         rawTemperature &= 0xFFFC;
 
         float temp = -46.85 + (175.72 * rawTemperature / 65536.0);  // Convertimos los datos a temperatura en grados Celsius
-        char temp_str[20]; // Asegúrate de que el tamaño sea suficiente para la cadena
    
-        snprintf(temp_str, sizeof(temp_str), "Temp: %.2f °C", temp); // Formatea la temperatura a dos decimales como cadena
+        snprintf(data_str, sizeof(data_str), "Temp: %.2f °C", temp); // Formatea la temperatura a dos decimales como cadena
     
-        if(print_i2c(temp_str) != pdPASS){
-            print_uart("Error: No se pudo enviar el mensaje temp_str.\r\n");
+        if(print_i2c(data_str, I2C_ARDUINO_ADDRESS) != pdPASS){
+            print_uart("Error: No se pudo enviar el mensaje data_str.\r\n");
+            reset = true;
             continue;
         }
         
 
         vTaskDelay(pdMS_TO_TICKS(2500));
-        memset(temp_str, 0, sizeof(temp_str));
+        memset(data_str, 0, sizeof(data_str));
 
         if (request_htu21d(i2c_id, TRIGGER_HUMD_MEASURE_NOHOLD) != pdPASS) {
             print_uart("Error: No se pudo realizar la solicitud de humedad.");
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            reset = true;
             continue;
         }
 
@@ -685,13 +677,13 @@ void test_request_i2c(void *pvParameters) {
             if(xQueueReceive(i2c->responses, &data_aux, pdMS_TO_TICKS(100)) != pdTRUE){
                 print_uart("Error: No se pudo recibir el mensaje de humedad.");
                 error = true;
-                vTaskDelay(pdMS_TO_TICKS(1000));
                 break;
             }
             data[i] = data_aux;
         }
 
         if(error){
+            reset = true;
             continue;
         }
 
@@ -700,17 +692,48 @@ void test_request_i2c(void *pvParameters) {
         rawHumidity &= 0xFFFC;  // Aplicamos máscara para quitar los bits de estado
         float hum = -6.0 + (125.0 * rawHumidity / 65536.0);  // Convertimos los datos a porcentaje de humedad
 
-        snprintf(temp_str, sizeof(temp_str), "Hum: %.2f %%", hum); // Formatea la temperatura a dos decimales como cadena
-        if(print_i2c(temp_str) != pdPASS){
+        snprintf(data_str, sizeof(data_str), "Hum: %.2f %%", hum); // Formatea la temperatura a dos decimales como cadena
+        if(print_i2c(data_str, I2C_ARDUINO_ADDRESS) != pdPASS){
             print_uart("Error: No se pudo enviar el mensaje hum_str.");
+            reset = true;
             continue;
         }
 
         vTaskDelay(pdMS_TO_TICKS(2500));
-        memset(temp_str, 0, sizeof(temp_str));
-        print_uart("Solicitud de temperatura y humedad completada.\n\r");
+        print_uart("---------------\n\r");
     }
 }
+
+/**
+ * @brief Tarea de testing que envia un mensaje periódico al 0x08 por I2C, testeando el bus
+ * 
+ * @param pvParameters Sin utilizar
+ * @return void
+ */
+
+void test_i2c(void *pvParameters) {
+    uint32_t i2c_id = I2C1;
+    i2c_t *i2c = get_i2c(i2c_id);
+    if (i2c == NULL) {
+        print_uart("Error: No se pudo obtener el periférico I2C. Eliminando tarea...\n\r");
+        vTaskDelete(NULL);
+    }
+
+    for (;;) {
+        if (print_i2c("Hola, Arduino!", 0x08) != pdPASS) {
+            print_uart("Error: No se pudo enviar el mensaje (UNO).\n\r");
+            xSemaphoreGive(i2c->mutex);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
+
+
+
 
 /** 
  * @brief Imprimir un mensaje por I2C1 al esclavo con dirección I2C_ARDUINO_ADDRESS
@@ -721,10 +744,10 @@ void test_request_i2c(void *pvParameters) {
  * @note Esta función es llamada por la tarea de testing de I2C
  */
 
-BaseType_t print_i2c(const char *data) {
+BaseType_t print_i2c(const char *data, uint8_t addr) {
     // Inicio la comunicación -> Envío el comando -> Envío los datos -> Detengo la comunicación
     uint8_t buffer[1 + strlen(data)];
     buffer[0] = 0x01;
     memcpy(&buffer[1], data, strlen(data));
-    return i2c_send_data_slave(I2C1, I2C_ARDUINO_ADDRESS, buffer, strlen(data) + 1);
+    return i2c_send_data_slave(I2C1, addr, buffer, strlen(data) + 1);
 }

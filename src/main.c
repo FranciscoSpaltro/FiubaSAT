@@ -16,8 +16,12 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
 
-// Handle para la tarea del parpadeo
-static TaskHandle_t blink_handle;
+// Handle para la tarea del parpadeo y test
+TaskHandle_t blink_handle;
+TaskHandle_t test_handle;
+
+// Delay para el parpadeo
+uint32_t blinkDelay = 500;
 
 #define SIZE_BUFFER_RX1 512
 
@@ -74,14 +78,13 @@ static void taskUART1_GPS(uint32_t usart_id) {
             
             UART_puts(USART3, RMC, pdMS_TO_TICKS(100));
             UART_puts(USART3, "\r\n", pdMS_TO_TICKS(100));
-            
+
+            UART_puts(USART3, "\r\n", pdMS_TO_TICKS(100));
+            UART_puts(USART3, "\r\n", pdMS_TO_TICKS(100));
+
             UART_puts(USART1, buffer, pdMS_TO_TICKS(100));
 
-            UART_puts(USART3, "\r\n", pdMS_TO_TICKS(100));
-            UART_puts(USART3, "\r\n", pdMS_TO_TICKS(100));
-
             UART_clear_rx_queue(usart_id, pdMS_TO_TICKS(100));
-
             usart_enable_rx_interrupt(usart_id);
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -90,8 +93,7 @@ static void taskUART1_GPS(uint32_t usart_id) {
 
 /**
  * @brief Tarea para la transmisión de datos a través de UART.
- * Lee los datos de la cola de transmisión y los envía a través del USART especificado.
- * En este caso particular lo que reciba usart_id se vuelve a envíar por UART3.
+ * Lee los datos de la cola de recepción de usart_id y los vuelve a enviar a través de este mismo.
  * @param usart_id Identificador del USART (USART1, USART3, USART3).
  */
 static void taskUART_echo(uint32_t usart_id) {
@@ -102,7 +104,7 @@ static void taskUART_echo(uint32_t usart_id) {
             // Procesar todos los datos en la cola
             while (UART_receive(usart_id, &data)) {
                 // Aquí puedes manejar el dato recibido (por ejemplo, almacenarlo o procesarlo)
-                UART_putchar(USART3, data, pdMS_TO_TICKS(100));
+                UART_putchar(usart_id, data, pdMS_TO_TICKS(100));
             }
             // Liberar el semáforo después de procesar los datos
             UART_semaphore_release(usart_id);
@@ -129,21 +131,20 @@ int main(void) {
     if(UART_setup(USART2, 115200) != pdPASS) return -1;
     if(UART_setup(USART3, 115200) != pdPASS) return -1;
 
+    // Creación de tareas genéricas para transmisión UART
+    xTaskCreate(taskUART_transmit, "UART1 TX", 256, (void *)USART1, 2, NULL);
+    xTaskCreate(taskUART_transmit, "UART2 TX", 256, (void *)USART2, 2, NULL);
+    xTaskCreate(taskUART_transmit, "UART3 TX", 256, (void *)USART3, 2, NULL);
+    
     // Crear tareas para Test
-    xTaskCreate(taskTest, "Test", 100, NULL, 2, NULL);  // Crear tarea para Test
-    xTaskCreate(taskTestUART_Semaphore, "Test_Semaphore", 100, NULL, 2, NULL);  // Crear tarea para Test
+    xTaskCreate(taskTest, "Test", 128, (void *)test_handle, 2, &test_handle);  // Crear tarea para Test
     
     // Crear tarea para parpadear el LED
-    xTaskCreate(taskBlink, "LED", 100, NULL, 2, &blink_handle);  // Crear tarea para parpadear el LED
-
-    // Creación de tareas genéricas para transmisión UART
-    xTaskCreate(taskUART_transmit, "UART1 TX", 128, (void *)USART1, 2, NULL);
-    xTaskCreate(taskUART_transmit, "UART2 TX", 128, (void *)USART2, 2, NULL);
-    xTaskCreate(taskUART_transmit, "UART3 TX", 128, (void *)USART3, 2, NULL);
+    xTaskCreate(taskBlink, "LED", 128, (void *)blinkDelay, 2, &blink_handle);  // Crear tarea para parpadear el LED
 
     // Creación de tareas genéricas para recepción UART
     xTaskCreate(taskUART1_GPS, "UART1 GPS", 1024, (void *)USART1, 2, NULL);
-    //xTaskCreate(taskUART_echo, "UART2 RX", 128, (void *)USART1, 2, NULL);
+    xTaskCreate(taskUART_echo, "UART2 Echo", 128, (void *)USART2, 2, NULL);
 
     // Start RTOS Task scheduler
 	vTaskStartScheduler();

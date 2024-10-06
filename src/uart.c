@@ -198,15 +198,15 @@ void taskUART_transmit(uint32_t usart_id) {
 
     uint8_t ch;
     for (;;) {
-            while (xQueueReceive(uart->txq, &ch, pdMS_TO_TICKS(500)) == pdPASS) {
+            while (xQueueReceive(uart->txq, &ch, pdMS_TO_TICKS(50)) == pdPASS) {
                 // Esperar hasta que el registro de transmisión esté vacío
                 while (!usart_get_flag(uart->usart, USART_SR_TXE))
                     taskYIELD(); // Ceder la CPU hasta que esté listo
                 // Enviar el byte a través de USART
                 usart_send(uart->usart, (uint8_t)ch);
             }
-        // Esperar 50 ms antes de la siguiente iteración
-        vTaskDelay(pdMS_TO_TICKS(200));
+        // Esperar __ ms antes de la siguiente iteración
+        vTaskDelay(pdMS_TO_TICKS(250));
     }
 }
 

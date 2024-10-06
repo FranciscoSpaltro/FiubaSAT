@@ -1,11 +1,10 @@
 #include "FreeRTOS.h"
 #include "blink.h"
 
-void taskBlink(void *args __attribute__((unused))) {
-    //char *taskName = "taskBlink is running\r\n";
+void taskBlink(uint32_t blink_delay) {
     for (;;) {
         gpio_toggle(GPIOC, GPIO13);
-		vTaskDelay(pdMS_TO_TICKS(250));
+		vTaskDelay(pdMS_TO_TICKS(blink_delay));
 	}
 }
 

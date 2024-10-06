@@ -11,6 +11,7 @@
 #include "libopencm3/stm32/rcc.h"
 
 #define SIZE_BUFFER_GPS 512
+
 static int get_id(uint32_t usart_id) {
     if (usart_id == USART1) {
         return 1;
@@ -23,7 +24,7 @@ static int get_id(uint32_t usart_id) {
     }
 }
 
-void test_uart_available_data(uint32_t usart_id) {
+static void test_uart_available_data(uint32_t usart_id) {
     char msg[60];
     int id = get_id(usart_id);
 
@@ -45,7 +46,7 @@ void test_uart_available_data(uint32_t usart_id) {
     usart_enable_rx_interrupt(usart_id);
 }
 
-void test_gps_registros(uint32_t usart_id) {
+static void test_gps_registros(uint32_t usart_id) {
     char buffer[SIZE_BUFFER_GPS]; // Buffer para almacenar los datos a enviar
     char GGA[100]; // Buffer para almacenar el mensaje GGA
     char RMC[100]; // Buffer para almacenar el mensaje RMC
@@ -67,37 +68,58 @@ void test_gps_registros(uint32_t usart_id) {
     UART_clear_rx_queue(usart_id, pdMS_TO_TICKS(100));
 }
 
-void taskTestUART_Semaphore(void *args __attribute__((unused))) {
+static int test_uart_semaphore(uint32_t usart_id) {
     // Se espera a que haya datos disponibles en la cola de recepción
-    UART_semaphore_release(USART1);
+    UART_semaphore_release(usart_id);
 
-    if(UART_semaphore_take(USART1, pdMS_TO_TICKS(100)) == pdFALSE){
-        UART_puts(USART3, "Test Semaphore failed. No se pudo tomar.\r\n", pdMS_TO_TICKS(100));
-        UART_semaphore_release(USART1);
-        vTaskDelete(NULL);
-        return;
+    if(UART_semaphore_take(usart_id, pdMS_TO_TICKS(100)) == pdFALSE){
+        UART_semaphore_release(usart_id);
+        return 1;
     }
     
-    if(UART_semaphore_take(USART1, pdMS_TO_TICKS(500)) == pdTRUE){
-        UART_puts(USART3, "Test Semaphore failed. Tomado dos veces.\r\n", pdMS_TO_TICKS(100));
-        UART_semaphore_release(USART1);
-        vTaskDelete(NULL);
-        return;
+    if(UART_semaphore_take(usart_id, pdMS_TO_TICKS(500)) == pdTRUE){
+        UART_semaphore_release(usart_id);
+        return 2;
     }
 
-    UART_puts(USART3, "Test Semaphore runned\r\n", pdMS_TO_TICKS(100));
     // Se libera el semáforo
-    UART_semaphore_release(USART1);    
-    vTaskDelete(NULL);
+    UART_semaphore_release(usart_id);
+    return 0;
 }
 
-void taskTest(void *args __attribute__((unused))){
-    // Espero 100 ms para que se envíen los datos
-    test_uart_available_data(USART1);
-    test_uart_available_data(USART2);
-    test_uart_available_data(USART3);
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    test_gps_registros(USART1);
+void taskTest(TaskHandle_t test_handle) {
+    int resultado = 0;
+    UART_puts(USART3, "Tarea de Test iniciada\r\n", pdMS_TO_TICKS(100));
+    for (;;) {
+        // Espero 100 ms para que se envíen los datos
+        resultado = test_uart_semaphore(USART1);
+        
+        if (resultado == 0) {
+            UART_puts(USART3, "Test Semaphore runned\r\n", pdMS_TO_TICKS(100));
+        } else if (resultado == 1) {
+            UART_puts(USART3, "Test Semaphore failed. No se pudo tomar.\r\n", pdMS_TO_TICKS(100));
+        } else if (resultado == 2) { 
+            UART_puts(USART3, "Test Semaphore failed. Tomado dos veces.\r\n", pdMS_TO_TICKS(100));
+        } else {
+            UART_puts(USART3, "Error en el test de semáforo.\r\n", pdMS_TO_TICKS(100));
+        }
 
-    vTaskDelete(NULL);
+        test_uart_available_data(USART1);
+        test_uart_available_data(USART2);
+        test_uart_available_data(USART3);
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+        //test_gps_registros(USART1);
+        
+        vTaskDelay(pdMS_TO_TICKS(500));
+        
+        if(test_handle != NULL) {
+            UART_puts(USART3, "Tarea de Test eliminada\r\n", pdMS_TO_TICKS(100));
+            vTaskDelete(test_handle);
+        } else {
+            UART_puts(USART3, "Error al eliminar la tarea de Test\r\n", pdMS_TO_TICKS(100));
+            vTaskDelete(NULL);
+        }
+    }
 }

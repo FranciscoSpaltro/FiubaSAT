@@ -17,12 +17,21 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
 
-// Handle para la tarea del parpadeo y test
-
 // Delay para el parpadeo
 uint32_t blinkDelay = 250;
 
 #define SIZE_BUFFER_RX1 512
+
+// Definir los handles de las tareas
+TaskHandle_t blink_handle = NULL;
+TaskHandle_t test_handle = NULL;
+
+// Función que verifica si estamos en modo de test (puedes adaptarla según tus necesidades)
+static uint8_t check_test_mode() {
+    // Esto puede ser desde un pin de entrada o un comando recibido
+    // Ejemplo sencillo: siempre activar el modo de test
+    return 1;  // 1 = Modo de Test, 0 = Operación Normal
+}
 
 /**
  * @brief Tarea manejo GPS UART1.
@@ -99,7 +108,7 @@ static void taskUART_echo(uint32_t usart_id) {
     uint8_t data;
     for (;;) {
         // Esperar a que el semáforo indique que hay datos disponibles
-        if (UART_semaphore_take(usart_id, portMAX_DELAY) == pdTRUE) {
+        //if (UART_semaphore_take(usart_id, portMAX_DELAY) == pdTRUE) {
             // Procesar todos los datos en la cola
             while (UART_receive(usart_id, &data)) {
                 // Aquí puedes manejar el dato recibido (por ejemplo, almacenarlo o procesarlo)
@@ -107,8 +116,8 @@ static void taskUART_echo(uint32_t usart_id) {
             }
             // Liberar el semáforo después de procesar los datos
             UART_semaphore_release(usart_id);
-        }
-        vTaskDelay(pdMS_TO_TICKS(50));
+        //}
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
 
@@ -130,9 +139,6 @@ int main(void) {
     if(UART_setup(USART2, 115200) != pdPASS) return -1;
     if(UART_setup(USART3, 115200) != pdPASS) return -1;
     
-    // Crear tareas para Test
-    xTaskCreate(taskTest, "Test", 128, NULL, 2, &test_handle);  // Crear tarea para Test
-    
     // Crear tarea para parpadear el LED
     xTaskCreate(taskBlink, "LED", 128, (void *)blinkDelay, 2, &blink_handle);  // Crear tarea para parpadear el LED
 
@@ -141,9 +147,20 @@ int main(void) {
     xTaskCreate(taskUART_transmit, "UART2 TX", 256, (void *)USART2, 2, NULL);
     xTaskCreate(taskUART_transmit, "UART3 TX", 256, (void *)USART3, 2, NULL);
 
-    // Creación de tareas genéricas para recepción UART
-    xTaskCreate(taskUART1_GPS, "UART1 GPS", 1024, (void *)USART1, 2, NULL);
-    xTaskCreate(taskUART_echo, "UART2 Echo", 128, (void *)USART2, 2, NULL);
+    if (check_test_mode()) {
+        // Test Mode para UART
+        UART_puts(USART3, "Test Mode\r\n", pdMS_TO_TICKS(100));
+
+        xTaskCreate(taskUART_echo, "UART1 Echo", 128, (void *)USART1, 2, NULL);
+        xTaskCreate(taskUART_echo, "UART2 Echo", 128, (void *)USART2, 2, NULL);
+        xTaskCreate(taskUART_echo, "UART3 Echo", 128, (void *)USART3, 2, NULL);
+    } else {
+        // Crear tareas para Tests internos
+        xTaskCreate(taskTest, "Test", 128, NULL, 2, &test_handle);  // Crear tarea para Test
+
+        // Creación de tareas genéricas para recepción UART
+        xTaskCreate(taskUART1_GPS, "UART1 GPS", 1024, (void *)USART1, 2, NULL);
+    }
 
     // Start RTOS Task scheduler
 	vTaskStartScheduler();

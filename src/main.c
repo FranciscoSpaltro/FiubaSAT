@@ -2,12 +2,12 @@
 #include "task.h"
 #include "uart.h"
 #include "i2c.h"
+#include "i2c_test.h"
 
 #include "blink.h"
 #include "timers.h"
 #include <stdio.h>
 #include "semphr.h"
-#include "test.h"
 
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
@@ -40,8 +40,8 @@ int main(void) {
 
     
     //xTaskCreate(test_write_i2c, "I2C WT", 128, (void *) 0x04, 3, NULL);
-    xTaskCreate(test_request_i2c, "I2C RQ", 256, (void *) I2C1, 2, NULL);
-    xTaskCreate(test_i2c, "I2C TEST", 256, (void *) I2C1, 3, NULL);
+    xTaskCreate(i2c_testing_trama, "I2C RQ", 256, (void *) I2C1, 2, NULL);
+    //xTaskCreate(test_i2c, "I2C TEST", 256, (void *) I2C1, 3, NULL);
     
     //xTaskCreate(task_i2c_request, "I2C RQT", 128, (void *) I2C1, 3, NULL);
     //xTaskCreate(test_request_i2c, "I2C TX", 128, (void *) 0x04, 3, NULL);

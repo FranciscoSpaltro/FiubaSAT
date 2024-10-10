@@ -15,6 +15,7 @@ RECORDATORIOS: dar opcion a menos manual activando el CS o AUTOMATICO (lo maneja
 //#define DEBUG_PLOTTING
 
 #define DUMMY   0xFFFF
+#define SHIFT_8 8
 
 typedef struct {
     uint32_t SPI_id;  // SPI_id 
@@ -36,6 +37,7 @@ static const slave_t* spi_get_slave(const spi_t *spi, uint8_t slave_id);
 static void spi_slaves_init(slave_t *slaves);
 
 // Manejadores de SPIs
+
 static spi_t *get_spi(uint32_t SPI_id) {
     switch (SPI_id) {
         case SPI1: return &spi1;
@@ -91,7 +93,7 @@ static BaseType_t spi_create(spi_t *spi, uint32_t SPI_id, uint8_t data_size, Mod
 
 //Inicializa los pines de los esclavos en modo de salida
 static void spi_slaves_init(slave_t *slaves){    
-    for (size_t i = 0; slaves[i].slave_id != 0; i++) {
+    for (size_t i = 0; slaves[i].slave_id != NULL; i++) {
         gpio_set_mode(slaves[i].gpio_port,
             GPIO_MODE_OUTPUT_50_MHZ,
             GPIO_CNF_OUTPUT_PUSHPULL,
@@ -104,7 +106,7 @@ static void spi_slaves_init(slave_t *slaves){
 // Función para buscar el esclavo por ID a partir de un puntero a spi_t
 static const slave_t* spi_get_slave(const spi_t *spi, uint8_t slave_id) {
     // Iterar sobre los esclavos en el arreglo dentro de la estructura spi_t
-    for (size_t i = 0; spi->slaves[i].slave_id != 0; i++) {
+    for (size_t i = 0; spi->slaves[i].slave_id != NULL; i++) {
         if (spi->slaves[i].slave_id == slave_id) {
             return &spi->slaves[i]; // Retorna un puntero al esclavo encontrado
         }
@@ -286,10 +288,10 @@ BaseType_t spi_deselect_slave(uint32_t spi_id, uint32_t slave_id){
         // No se esperaría que esta llamada falle porque debimos haber obtenido el semáforo antes de llegar aquí.
         return pdFALSE;
     };
-    return pdFALSE;    
+    return pdTRUE;    
 }
 
-void spi_transmit(uint32_t SPI_id, void *data, uint16_t size, TickType_t xTicksToWait) {
+void spi_transmit(uint32_t SPI_id, uint8_t *data, uint16_t size, TickType_t xTicksToWait) {
     spi_t *spi = get_spi(SPI_id);
     if (spi == NULL) return;
     
@@ -301,19 +303,16 @@ void spi_transmit(uint32_t SPI_id, void *data, uint16_t size, TickType_t xTicksT
 
         } else if (spi->data_size == DATA_SIZE_16) {
             // Enviamos datos de 16 bits
-            spi_send(SPI_id, ((uint16_t*)data)[i]);
+            spi_send(SPI_id, data[i] << SHIFT_8 | data[i + 1]);
+            i++;
         }
          
         spi_read(spi->SPI_id);  //Lectura dummy para vaciamiento del buffer de recepcion
         
-        // Para debugging, retraso opcional (puede ajustarse o eliminarse)
-        #ifdef DEBUG_PLOTTING
-            vTaskDelay(pdMS_TO_TICKS(100));  // Retraso para debugging con Arduino
-        #endif
     }    
 }
 
-void spi_transmit_receive(uint32_t SPI_id, void *txdata, uint16_t *rxdata, uint16_t size, TickType_t xTicksToWait) {
+void spi_transmit_receive(uint32_t SPI_id, uint8_t *txdata, uint16_t *rxdata, uint16_t size, TickType_t xTicksToWait) {
     spi_t *spi = get_spi(SPI_id);
     if (spi == NULL) return;
     
@@ -325,15 +324,12 @@ void spi_transmit_receive(uint32_t SPI_id, void *txdata, uint16_t *rxdata, uint1
 
         } else if (spi->data_size == DATA_SIZE_16) {
             // Enviamos datos de 16 bits
-            spi_send(SPI_id, ((uint16_t*)txdata)[i]);
+            spi_send(SPI_id, txdata[i] << SHIFT_8 | txdata[i + 1]);
+            i++;
         }
          
         rxdata[i] = spi_read(spi->SPI_id);  //Lectura dummy para vaciamiento del buffer de recepcion
         
-        // Para debugging, retraso opcional (puede ajustarse o eliminarse)
-        #ifdef DEBUG_PLOTTING
-            vTaskDelay(pdMS_TO_TICKS(100));  // Retraso para debugging con Arduino
-        #endif
     }    
 }
 
@@ -345,28 +341,11 @@ void spi_receive(uint32_t SPI_id, uint16_t *data, uint16_t size, TickType_t xTic
         
         spi_send(SPI_id, DUMMY); //Envio de valor dummy para generacion de señal de clock
         data[i] = spi_read(spi->SPI_id);  //Lectura dummy para vaciamiento del buffer de recepcion
-        
-        // Para debugging, retraso opcional (puede ajustarse o eliminarse)
-        #ifdef DEBUG_PLOTTING
-            vTaskDelay(pdMS_TO_TICKS(100));  // Retraso para debugging con Arduino
-        #endif
+            
     }    
 }
 
-//Tener en mente de hacer algo:
-/*
-uint16_t spi_read_with_timeout(uint32_t spi, TickType_t xTicksToWait) {
-    TickType_t start_time = xTaskGetTickCount();
-    
-    // Esperar a que el buffer de recepción esté lleno o hasta que se agote el timeout
-    while (!(SPI_SR(spi) & SPI_SR_RXNE)) {
-        if ((xTaskGetTickCount() - start_time) > xTicksToWait) {
-            return 0xFFFF; // Indicamos timeout con un valor especial
-        }
-    }
-    
-    return SPI_DR(spi);  // Leemos el registro de datos
-}*/
+
 
 
 /*

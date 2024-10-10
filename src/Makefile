@@ -12,17 +12,13 @@ INCLUDES = \
 	-I../lib/libopencm3/include
 
 SOURCES = \
-	main.c \
-	blink.c \
-	test.c \
-	uart.c \
-	spi_driver.c\
+	$(wildcard ../src/*.c) \
 	../lib/rtos/heap_4.c \
 	../lib/rtos/list.c \
 	../lib/rtos/port.c \
 	../lib/rtos/tasks.c \
 	../lib/rtos/queue.c \
-	../lib/rtos/timers.c
+	../lib/rtos/timers.c	
 #	../lib/rtos/opencm3.c
 
 CFLAGS = -std=c99 -Wall -Wextra -Wshadow -Wimplicit-function-declaration -Wredundant-decls \
@@ -36,6 +32,7 @@ LDLIBS = -L../lib/libopencm3/lib -lopencm3_stm32f1
 OBJS = $(SOURCES:.c=.o)
 
 all: check_libopencm3 $(PROJECT_NAME).elf clean
+andflash: all flash
 
 check_libopencm3:
 	@if [ ! -d "../lib/libopencm3" ] || [ -z "$$(ls -A ../lib/libopencm3 2>/dev/null)" ]; then \
@@ -64,6 +61,6 @@ delete:
 	rm -f $(OBJS) $(PROJECT_NAME).elf $(PROJECT_NAME).bin
 
 flash:
-	openocd -f /usr/share/openocd/scripts/interface/stlink.cfg -f /usr/share/openocd/scripts/target/stm32f1x.cfg -c "program $(PROJECT_NAME).bin 0x08000000" -c "shutdown"
+	openocd -f /usr/share/openocd/scripts/interface/stlink.cfg -f /usr/share/openocd/scripts/target/stm32f1x.cfg -c "program $(PROJECT_NAME).bin 0x08000000 verify reset exit"
 
-.PHONY: all clean delete flash check_libopencm3
+.PHONY: all andflash clean delete flash check_libopencm3

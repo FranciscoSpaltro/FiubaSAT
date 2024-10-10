@@ -221,7 +221,8 @@ void nrf24_setTxAddr(nrf24 *node, uint8_t *Address) {
 uint8_t nrf24_Transmit(nrf24 *node, uint8_t *data, uint8_t len) {
 	uint8_t cmdtosend = 0;	
 
-	nrf24_CSN_enable(node);		//select the device
+	spi_select_slave(SPI1, SLAVE_2);
+	//nrf24_CSN_enable(node);		//select the device
 
 	cmdtosend = W_TX_PAYLOAD;	//payload command
 
@@ -231,19 +232,27 @@ uint8_t nrf24_Transmit(nrf24 *node, uint8_t *data, uint8_t len) {
     // Verificar que la transmisión haya terminado completamente
 	while (SPI_SR(SPI1) & SPI_SR_BSY);  // BSY = 0 -> transmisión finalizada
 
-	// send the payload
+	// send the payload 
+	/*
     if (len < 33) {
         for (int i = 0; i < len; i++) {
             spi_xfer_blocking(node->SPI_id, data[i]);
-
+			
 			while (!(SPI_SR(SPI1) & SPI_SR_TXE));  // TXE = 1 -> buffer vacío
 			// Verificar que la transmisión haya terminado completamente
 			while (SPI_SR(SPI1) & SPI_SR_BSY);  // BSY = 0 -> transmisión finalizada
         }		
-    }
-	
-	nrf24_CSN_disable(node);	//Unselect the device
+    }*/
 
+   	spi_transmit(SPI1, data, len, 10);
+	
+	while (!(SPI_SR(SPI1) & SPI_SR_TXE));  // TXE = 1 -> buffer vacío
+	// Verificar que la transmisión haya terminado completamente
+	while (SPI_SR(SPI1) & SPI_SR_BSY);  // BSY = 0 -> transmisión finalizada
+
+	spi_deselect_slave(SPI1, SLAVE_2);
+	//nrf24_CSN_disable(node);	//Unselect the device
+	
 	
 	//Comienza el chequeo de envio	
 
@@ -268,10 +277,10 @@ uint8_t nrf24_Transmit(nrf24 *node, uint8_t *data, uint8_t len) {
 
 		return (1);
 		}
-	uart_puts("Pase por el timeout\r\n");
+	
 	}
 
-	uart_puts("Esta por retornar 0\r\n");
+	
 	return (0);
 }
 
@@ -402,12 +411,12 @@ static void nrf24_CE_disable(nrf24 *node) {
 // -----------------------------------------------------------------------------
 
 static void nrf24_CSN_enable(nrf24 *node){
-	gpio_clear(node->CSN_port, node->CSN_pin);
+	spi_select_slave(SPI1, SLAVE_2);
 }
 // -----------------------------------------------------------------------------
 
 static void nrf24_CSN_disable(nrf24 *node) {
-	gpio_set(node->CSN_port, node->CSN_pin);
+	spi_deselect_slave(SPI1, SLAVE_2);
 }
 
 //------------------------------------------------------------------------------

@@ -3,6 +3,7 @@ RECORDATORIOS: dar opcion a menos manual activando el CS o AUTOMATICO (lo maneja
 -En caso de tener un solo esclavo es mejor el uso en automatico. Que pasa si queda el el chip enabkle y se va a otra tarea?
 - En select y deselect salve manejar los errores
 -Ver que pasa cuando se desconecta el spi
+-Ver que mejoras se pueden hacer con el spi_config.h
 */
 
 #include "FreeRTOS.h"
@@ -12,8 +13,7 @@ RECORDATORIOS: dar opcion a menos manual activando el CS o AUTOMATICO (lo maneja
 
 #define SPI_SIZE_BUFFER 256  // Queues size
 //#define DEBUG_PLOTTING
-#define DATA_SIZE_8 8
-#define DATA_SIZE_16 16
+
 #define DUMMY   0xFFFF
 
 typedef struct {
@@ -31,7 +31,7 @@ static spi_t spi2;
 
 //Prototipos de funciones
 static spi_t *get_spi(uint32_t SPI_id);
-static BaseType_t spi_create(spi_t *spi, uint32_t SPI_id, uint8_t data_size);
+static BaseType_t spi_create(spi_t *spi, uint32_t SPI_id, uint8_t data_size, Mode_t mode);
 static const slave_t* spi_get_slave(const spi_t *spi, uint8_t slave_id);
 static void spi_slaves_init(slave_t *slaves);
 
@@ -45,7 +45,7 @@ static spi_t *get_spi(uint32_t SPI_id) {
 }
 
 // Inicialización de la estructura spi_t
-static BaseType_t spi_create(spi_t *spi, uint32_t SPI_id, uint8_t data_size) {
+static BaseType_t spi_create(spi_t *spi, uint32_t SPI_id, uint8_t data_size, Mode_t mode){
 
     spi->SPI_id = SPI_id;  // Asigna el SPI_id correspondiente
 
@@ -69,13 +69,20 @@ static BaseType_t spi_create(spi_t *spi, uint32_t SPI_id, uint8_t data_size) {
 
     xSemaphoreGive(spi->mutex);
 
-      // Asigna el puntero a los esclavos según el SPI_id
-    if (SPI_id == SPI1) {
-        spi->slaves = spi1_slaves;  // Usar la configuración de SPI1
-    
-    } else {
-        spi->slaves = NULL;
+    // Asigna el puntero a los esclavos según el SPI_id
+    if (mode == master_mode){
+
+        if (SPI_id == SPI1) {
+            spi->slaves = spi1_slaves;  // Usar la configuración de SPI1
+        }
+        else if (SPI_id == SPI2){
+            spi->slaves = spi2_slaves;
+        }        
     }
+    
+    else {
+        spi->slaves = NULL;
+    }   
 
     spi->data_size = data_size;
 
@@ -97,7 +104,7 @@ static void spi_slaves_init(slave_t *slaves){
 // Función para buscar el esclavo por ID a partir de un puntero a spi_t
 static const slave_t* spi_get_slave(const spi_t *spi, uint8_t slave_id) {
     // Iterar sobre los esclavos en el arreglo dentro de la estructura spi_t
-    for (size_t i = 0; i < SPI1_SLAVE_COUNT; i++) {
+    for (size_t i = 0; spi->slaves[i].slave_id != 0; i++) {
         if (spi->slaves[i].slave_id == slave_id) {
             return &spi->slaves[i]; // Retorna un puntero al esclavo encontrado
         }
@@ -105,26 +112,14 @@ static const slave_t* spi_get_slave(const spi_t *spi, uint8_t slave_id) {
     return NULL; // No se encontró el esclavo
 }
 
-BaseType_t spi_setup(uint32_t SPI_id) {
+BaseType_t spi_setup(uint32_t SPI_id, Mode_t mode) {
 
     spi_t *spi = get_spi(SPI_id);       //Obtengo estructura spi_t en base al SPI_id
     
     if (SPI_id == SPI1){
-        if(spi_create(spi, SPI1, DATA_SIZE_8) != pdPASS) return pdFAIL;
+        if(spi_create(spi, SPI1, DATA_SIZE_8, mode) != pdPASS) return pdFAIL;
 
         rcc_periph_clock_enable(RCC_SPI1); //Enable the clock for SPI1
-
-        /* Configuración de los pines GPIO para SPI */
-        
-        gpio_set_mode(GPIOA,
-            GPIO_MODE_OUTPUT_50_MHZ,
-            GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
-            GPIO4 | GPIO5 | GPIO7);  // NSS=PA4, SCK=PA5, MOSI=PA7
-
-        gpio_set_mode(GPIOA,
-            GPIO_MODE_INPUT,
-            GPIO_CNF_INPUT_FLOAT,
-            GPIO6);  // MISO=PA6
 
         spi_init_master(
             SPI1,
@@ -135,26 +130,48 @@ BaseType_t spi_setup(uint32_t SPI_id) {
             SPI_CR1_MSBFIRST                    //Se transmite el MSB primero
         );
 
-        spi_slaves_init(spi->slaves);
+        /* Configuración de los pines GPIO para SPI en modo Maestro */
+        
+        if (mode == master_mode){
+
+            gpio_set_mode(GPIOA,
+                GPIO_MODE_OUTPUT_50_MHZ,
+                GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
+                GPIO4 | GPIO5 | GPIO7);  // NSS=PA4, SCK=PA5, MOSI=PA7
+
+            gpio_set_mode(GPIOA,
+                GPIO_MODE_INPUT,
+                GPIO_CNF_INPUT_FLOAT,
+                GPIO6);  // MISO=PA6
+
+            spi_slaves_init(spi->slaves);
+        }
+
+        else {
+            gpio_set_mode(GPIOA,
+                GPIO_MODE_INPUT,
+                GPIO_CNF_INPUT_FLOAT,
+                GPIO4 | GPIO5 | GPIO7);  // NSS=PA4, SCK=PA5, MOSI=PA7
+
+            gpio_set_mode(GPIOA,
+                GPIO_MODE_OUTPUT_50_MHZ,
+                GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
+                GPIO6);  // MISO=PA6
+
+            spi_set_slave_mode(SPI1);
+
+            spi_enable_rx_buffer_not_empty_interrupt(SPI1);
+            nvic_enable_irq(NVIC_SPI1_IRQ);
+        }
+
     }
 
     else if (SPI_id == SPI2){
+
+        if(spi_create(spi, SPI2, DATA_SIZE_8, mode) != pdPASS) return pdFAIL;
+
         rcc_periph_clock_enable(RCC_SPI2); //Enable the clock for SPI1
-        gpio_set_mode(
-            GPIOB,
-            GPIO_MODE_OUTPUT_50_MHZ,
-            GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
-            GPIO12 | GPIO13 | GPIO15 // PB12=NSS2 PB13=SCK2 PB15=MOSI2 
-        );
-
-        gpio_set_mode(
-            GPIOB,
-            GPIO_MODE_INPUT,
-            GPIO_CNF_INPUT_FLOAT,
-            GPIO12 // MISO2=PB14
-        );
-
-               
+        
         spi_init_master(
             SPI2,
             SPI_CR1_BAUDRATE_FPCLK_DIV_64,     //Se debe tener en cuenta la maxima frecuencia de operacion de APB1 y APB2
@@ -164,14 +181,55 @@ BaseType_t spi_setup(uint32_t SPI_id) {
             SPI_CR1_MSBFIRST                    //Se transmite el MSB primero
         );
 
-        if(spi_create(spi, SPI2, DATA_SIZE_8) != pdPASS) return pdFAIL;
+        if (mode == master_mode){
+            gpio_set_mode(
+                GPIOB,
+                GPIO_MODE_OUTPUT_50_MHZ,
+                GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
+                GPIO12 | GPIO13 | GPIO15 // PB12=NSS2 PB13=SCK2 PB15=MOSI2 
+            );
+
+            gpio_set_mode(
+                GPIOB,
+                GPIO_MODE_INPUT,
+                GPIO_CNF_INPUT_FLOAT,
+                GPIO14 // MISO2=PB14
+            );
+            spi_slaves_init(spi->slaves);
+        }
+
+        else {
+            gpio_set_mode(
+                GPIOB,
+                GPIO_MODE_INPUT,
+                GPIO_CNF_INPUT_FLOAT,
+                GPIO12 | GPIO13 | GPIO15 // PB12=NSS2 PB13=SCK2 PB15=MOSI2 
+            );
+
+            gpio_set_mode(
+                GPIOB,
+                GPIO_MODE_OUTPUT_50_MHZ,
+                GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
+                GPIO14 // MISO2=PB14
+            );
+            spi_set_slave_mode(SPI2);
+
+            spi_enable_rx_buffer_not_empty_interrupt(SPI2);
+            nvic_enable_irq(NVIC_SPI2_IRQ);
+        }        
+    }
+
+    spi_disable_software_slave_management(spi->SPI_id);    //Desactivo el manejo del NSS por software
+
+    if (mode == slave_mode){
+        spi_disable_ss_output(spi->SPI_id);    //Configuro el pin NSS entrada.
         
     }
 
-    // Me puedo desentender del codigo
-
-    spi_disable_software_slave_management(spi->SPI_id);    //Desactivo el manejo del NSS por software
-    spi_enable_ss_output(spi->SPI_id);    //Configuro el pin NSS como salida.
+    else {
+        spi_enable_ss_output(spi->SPI_id);    //Configuro el pin NSS como salida.
+    }
+    
     spi_enable(spi->SPI_id);
     
     return pdTRUE;                  

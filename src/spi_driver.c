@@ -4,6 +4,8 @@ RECORDATORIOS: dar opcion a menos manual activando el CS o AUTOMATICO (lo maneja
 - En select y deselect salve manejar los errores
 -Ver que pasa cuando se desconecta el spi
 -Ver que mejoras se pueden hacer con el spi_config.h
+-Agregar timeouts tiks to wait
+NO puse lo de las tareas, porque en el momento que salga de esta tarea, pasa a otra y queda activado el chip select
 */
 
 #include "FreeRTOS.h"
@@ -35,7 +37,7 @@ static spi_t *get_spi(uint32_t SPI_id);
 static BaseType_t spi_create(spi_t *spi, uint32_t SPI_id, uint8_t data_size, Mode_t mode);
 static const slave_t* spi_get_slave(const spi_t *spi, uint8_t slave_id);
 static void spi_slaves_init(slave_t *slaves);
-
+static uint16_t spi_xfer_blocking(uint32_t spi, uint16_t data);
 // Manejadores de SPIs
 
 static spi_t *get_spi(uint32_t SPI_id) {
@@ -262,11 +264,15 @@ uint16_t spi_xfer_blocking(uint32_t spi, uint16_t data)
 // Función para seleccionar el slave (habilitar su CS)
 BaseType_t spi_select_slave(uint32_t spi_id, uint32_t slave_id){
     spi_t *spi = get_spi(spi_id);       //Obtengo estructura spi_t en base al SPI_id
-    if (spi == NULL) return;
+    if (spi == NULL) return pdFALSE;
 
     // Intentar tomar el mutex con un timeout de 100ms
     if (xSemaphoreTake(spi->mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         slave_t *slave = spi_get_slave(spi, slave_id);
+        
+        if (slave == NULL){
+            return pdFALSE;
+        }
         gpio_clear(slave->gpio_port, slave->gpio_pin);
        
     } else {
@@ -275,20 +281,24 @@ BaseType_t spi_select_slave(uint32_t spi_id, uint32_t slave_id){
         return pdFALSE;
     }
 
-    return pdTRUE;
+    return pdPASS;
 }
 
 // Función para deseleccionar el slave (deshabilitar su CS)
 BaseType_t spi_deselect_slave(uint32_t spi_id, uint32_t slave_id){
     spi_t *spi = get_spi(spi_id);       //Obtengo estructura spi_t en base al SPI_id
     slave_t *slave = spi_get_slave(spi, slave_id);
+
+    if (slave == NULL){
+            return pdFALSE;
+    }
     gpio_set(slave->gpio_port, slave->gpio_pin);
 
     if (xSemaphoreGive(spi->mutex) != pdTRUE){
         // No se esperaría que esta llamada falle porque debimos haber obtenido el semáforo antes de llegar aquí.
         return pdFALSE;
     };
-    return pdTRUE;    
+    return pdPASS;    
 }
 
 void spi_transmit(uint32_t SPI_id, uint8_t *data, uint16_t size, TickType_t xTicksToWait) {

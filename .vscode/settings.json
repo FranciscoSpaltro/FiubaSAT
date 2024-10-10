@@ -7,6 +7,7 @@
         "i2c_copy.h": "c",
         "portmacro.h": "c",
         "uart.h": "c",
-        "semphr.h": "c"
+        "semphr.h": "c",
+        "task.h": "c"
     }
 }

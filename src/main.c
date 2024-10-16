@@ -30,7 +30,7 @@ int main(void) {
     blink_setup();
     if(UART_setup(USART1, 115200) != pdPASS) return -1;
 
-    if(i2c_setup(I2C1) != true) return -1;
+    if(i2c_setup(I2C1) != I2C_PASS) return -1;
 
     xTaskCreate((TaskFunction_t)taskUART_transmit, "UART1 TX", 128, (void *)USART1, 3, NULL);
     xTaskCreate(taskBlink, "LED", 100, NULL, 3, &blink_handle);
@@ -40,7 +40,7 @@ int main(void) {
 
     
     //xTaskCreate(test_write_i2c, "I2C WT", 128, (void *) 0x04, 3, NULL);
-    xTaskCreate(i2c_testing_trama, "I2C RQ", 256, (void *) I2C1, 2, NULL);
+    xTaskCreate(test_request_i2c, "I2C RQ", 256, (void *) I2C1, 2, NULL);
     //xTaskCreate(test_i2c, "I2C TEST", 256, (void *) I2C1, 3, NULL);
     
     //xTaskCreate(task_i2c_request, "I2C RQT", 128, (void *) I2C1, 3, NULL);

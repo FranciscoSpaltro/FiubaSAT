@@ -18,6 +18,9 @@
     - Recibe todos los bytes
     - Una vez finalizada la comunicacióon, imprime
 
+### OBSERVACIONES
+- FreeRTOS utiliza un contador de 32 bits para contar los ticks del sistema, lo que significa que se desbordará después de aproximadamente 49.7 días (para un sistema que corre a 1 ms por tick). Sin embargo, el cálculo de la diferencia, como en tu código, maneja correctamente el desbordamiento debido a la aritmética de enteros sin signo
+
 ### Próximos pasos
 - Identificación de tipo de dato en el handshake? Vale la pena? El resto de los sensores no van a tener un micro
 - Protección ante dirección de esclavo repetida

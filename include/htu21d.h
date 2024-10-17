@@ -10,6 +10,6 @@
 #define HTU21D_ADDRESS 0x40
 
 BaseType_t reset_htu21d(uint32_t i2c_id);
-BaseType_t request_htu21d(uint32_t i2c_id, uint8_t command);
+BaseType_t request_htu21d(uint32_t i2c_id, uint8_t command, uint8_t *data);
 
 #endif 

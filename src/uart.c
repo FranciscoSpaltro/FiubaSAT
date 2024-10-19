@@ -154,8 +154,8 @@ static BaseType_t uart_init(uart_t *uart, uint32_t usart) {
     return pdPASS;
 }
 
-void taskUART_transmit(uint32_t usart_id) {
-    uart_t *uart = get_uart(usart_id);
+void taskUART_transmit(void *pvParameters) {
+    uart_t *uart = get_uart((uint32_t)pvParameters);
     if (uart == NULL) return;
 
     uint16_t ch;

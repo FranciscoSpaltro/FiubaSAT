@@ -13,7 +13,6 @@
 #include "uart.h"
 #include "portmacro.h"
 
-#define I2C_ARDUINO_ADDRESS 0x04 // Dirección del esclavo (Arduino)
 #define I2C_HTU21D_ADDRESS 0x40 // Dirección del sensor de humedad y temperatura
 #define I2C_TIMEOUT_MS 100   // Tiempo de espera en milisegundos
 #define I2C_TIMEOUT_MS_QUEUE 10 // Tiempo de espera en milisegundos para la cola

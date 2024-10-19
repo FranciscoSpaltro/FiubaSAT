@@ -8,6 +8,8 @@
         "portmacro.h": "c",
         "uart.h": "c",
         "semphr.h": "c",
-        "task.h": "c"
+        "task.h": "c",
+        "i2c_test.h": "c",
+        "test_i2c.h": "c"
     }
 }

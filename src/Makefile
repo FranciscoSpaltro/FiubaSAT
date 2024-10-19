@@ -17,7 +17,6 @@ SOURCES = \
 	uart.c \
 	i2c.c \
 	htu21d.c \
-	i2c_test.c \
 	../lib/rtos/heap_4.c \
 	../lib/rtos/list.c \
 	../lib/rtos/port.c \

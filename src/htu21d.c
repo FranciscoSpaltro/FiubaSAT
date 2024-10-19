@@ -42,7 +42,6 @@ BaseType_t request_htu21d(uint32_t i2c_id, uint8_t command, uint8_t *data){
         return pdFALSE;
     }
 
-    BaseType_t status;
     i2c_t *i2c = get_i2c(i2c_id);
     if (i2c == NULL) {
         return pdFALSE;

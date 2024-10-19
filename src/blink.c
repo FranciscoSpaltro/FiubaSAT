@@ -22,4 +22,5 @@ void blink_setup(void) {
 
 	// Turn LED off
 	gpio_set(GPIOC, GPIO13);
+
 }

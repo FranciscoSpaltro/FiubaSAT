@@ -32,9 +32,12 @@
 - Tema memoria
 - Si pido 5 bytes y me manda 1 que no se quede esperando después de un tiempo
 
-### Pruebas
-- [ ] Desconectar esclavo y reconectar
-- [ ] Enviar y recibir intercalado
+### Comandos útiles RPi5
+- pinout: muestra el pinout de la RPi
+- gpiodetect: muestra los chips
+- pinctrl: muestra info de todos los pines
+- gpioinfo: muestra info de todos los pines por chip
+- gpioget gpiochip0 4: muestra el estado del pin 4 del chip 0
 
 
 ### Tareas

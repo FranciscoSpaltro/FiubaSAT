@@ -14,7 +14,7 @@
 BaseType_t UART_setup(uint32_t usart, uint32_t baudrate);
 
 // Tarea que transmite datos a través de UART1
-void taskUART_transmit(uint32_t usart_id);
+void taskUART_transmit(void *pvParameters);
 
 // OBS: el encolamiento de datos en la cola de RX se realiza en la interrupción USART_ISR
 

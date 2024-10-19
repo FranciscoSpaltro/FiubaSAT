@@ -64,7 +64,6 @@ i2c_status_t i2c_wait_until_ready(uint32_t i2c_id) {
 
 i2c_status_t i2c_wait_until_start(uint32_t i2c_id) {
     TickType_t start_time = xTaskGetTickCount();  // Obtener el tiempo actual del sistema (FreeRTOS)
-    TickType_t timeout = pdMS_TO_TICKS(I2C_TIMEOUT_MS);  // Establecer el tiempo de timeout
 
     // Espera hasta que el bit de start esté establecido o el timeout expire
     while (!(I2C_SR1(i2c_id) & I2C_SR1_SB)) {
@@ -86,8 +85,7 @@ i2c_status_t i2c_wait_until_start(uint32_t i2c_id) {
 
 i2c_status_t i2c_wait_until_address(uint32_t i2c_id) {
     TickType_t start_time = xTaskGetTickCount();  // Obtener el tiempo actual del sistema (FreeRTOS)
-    TickType_t timeout = pdMS_TO_TICKS(I2C_TIMEOUT_MS);  // Establecer el tiempo de timeout
-
+    
     // Espera hasta que el bit de start esté establecido o el timeout expire
     while (!(I2C_SR1(i2c_id) & I2C_SR1_ADDR)) {
         if ((xTaskGetTickCount() - start_time) > pdMS_TO_TICKS(I2C_TIMEOUT_MS)) {
@@ -246,7 +244,7 @@ i2c_status_t i2c_setup(uint32_t i2c_id) {
         rcc_periph_reset_pulse(RST_I2C1);
 
         i2c_set_standard_mode(i2c->i2c_id); // Configurar modo estándar
-        i2c_set_clock_frequency(i2c->i2c_id, I2C_CR2_FREQ_36MHZ); // Configurar frecuencia del reloj a 36 MHz
+        i2c_set_clock_frequency(i2c->i2c_id, 36); // Configurar frecuencia del reloj a 36 MHz
         i2c_set_trise(i2c->i2c_id, 36); // Configurar tiempo de subida
         i2c_set_dutycycle(i2c->i2c_id, I2C_CCR_DUTY_DIV2); // Configurar ciclo de trabajo
         i2c_set_ccr(i2c->i2c_id, 180); // Configurar CCR para 100 kHz
@@ -263,7 +261,7 @@ i2c_status_t i2c_setup(uint32_t i2c_id) {
         rcc_periph_reset_pulse(RST_I2C1);
 
         i2c_set_standard_mode(i2c->i2c_id); // Configurar modo estándar
-        i2c_set_clock_frequency(i2c->i2c_id, I2C_CR2_FREQ_36MHZ); // Configurar frecuencia del reloj a 36 MHz
+        i2c_set_clock_frequency(i2c->i2c_id, 36); // Configurar frecuencia del reloj a 36 MHz
         i2c_set_trise(i2c->i2c_id, 36); // Configurar tiempo de subida
         i2c_set_dutycycle(i2c->i2c_id, I2C_CCR_DUTY_DIV2); // Configurar ciclo de trabajo
         i2c_set_ccr(i2c->i2c_id, 180); // Configurar CCR para 100 kHz

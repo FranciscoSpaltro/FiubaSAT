@@ -3,41 +3,37 @@
 uint8_t htu21d_data[3];
 
 /**
- * @brief Tarea que "sensa" la Raspberry Pi que va a actuar como esclavo I2C y le reenvia el dato que recibió
+ * @brief Tarea que establece una linea de pulsos para indicar que el sistema está funcionando, usando LINE_LIFE_PIN
  * 
  * @param pvParameters Sin utilizar
  * @return void
  */
 
-void test_raspi_com_i2c(void *pvParameters __attribute__((unused))) {
-    uint32_t i2c_id = I2C1;
+void life_line_setup(void) {
+    rcc_periph_clock_enable(LIFE_LINE_RCC);
 
-    i2c_t *i2c = get_i2c(i2c_id);
-    if (i2c == NULL) {
-        vTaskDelete(NULL);
-    }
+    gpio_set_mode(
+        LIFE_LINE_PORT, 
+        GPIO_MODE_OUTPUT_2_MHZ,
+        GPIO_CNF_OUTPUT_PUSHPULL,
+        LIFE_LINE_PIN
+    );
 
-    uint8_t data[20];
-    uint8_t data_len = 0;
+    gpio_set(LIFE_LINE_PORT, LIFE_LINE_PIN); // Establece el pin alto
+}
 
+void vLifeLineTask(void *pvParameters) {
+    // No es necesario verificar GPIO en este caso, asumiendo que está configurado correctamente
     for (;;) {
-        if (receive_i2c(data, &data_len, I2C_RASPI_ADDRESS) != I2C_PASS) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-
-        if (i2c_send_to_slave(I2C1, I2C_RASPI_ADDRESS, data, 1) != I2C_PASS) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        gpio_toggle(LIFE_LINE_PORT, LIFE_LINE_PIN); // Alterna el estado del pin
+        vTaskDelay(pdMS_TO_TICKS(LIFE_LINE_DELAY)); // Espera LIFE_LINE_DELAY segundos
     }
 }
 
 
+
 /**
- * @brief Tarea de testing para solicitar la temperatura y ebviarla al Arduino
+ * @brief Tarea de testing para solicitar la temperatura y enviarla al Arduino
  *       Solicita tres bytes al HTU21D, calcula la temperatura y la envía al Arduino, todo por I2C
  * 
  * @param pvParameters Sin utilizar

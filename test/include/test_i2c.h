@@ -5,8 +5,13 @@
 #include "htu21d.h"
 
 #define I2C_ARDUINO_ADDRESS 0x04 // Dirección del esclavo (Arduino)
-#define I2C_RASPI_ADDRESS 0x08 // Dirección del esclavo (Raspberry Pi)
+#define LIFE_LINE_PIN GPIO4
+#define LIFE_LINE_PORT GPIOB
+#define LIFE_LINE_RCC RCC_GPIOB
+#define LIFE_LINE_DELAY 1000 // 500 ms
 
+void life_line_setup(void);
+void vLifeLineTask(void *pvParameters);
 void test_request_i2c(void *pvParameters);
 void print_uart(const char *s);
 

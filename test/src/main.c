@@ -27,7 +27,8 @@ int main(void) {
     rcc_clock_setup_pll(&rcc_hse_configs[RCC_CLOCK_HSE8_72MHZ]);
 
     blink_setup();
-    life_line_setup();
+    test_setup();
+    exti_setup();
     if(UART_setup(USART1, 115200) != pdPASS) return -1;
 
     if(i2c_setup(I2C1) != I2C_PASS) return -1;
@@ -36,8 +37,8 @@ int main(void) {
     xTaskCreate(taskBlink, "LED", 100, NULL, 3, &blink_handle);
     xTaskCreate(vLifeLineTask, "Life Line", 100, NULL, 3, NULL);
 
-    xTaskCreate(test_request_i2c, "I2C RQ", 256, (void *) I2C1, 2, NULL);
-    
+    //xTaskCreate(test_request_i2c, "I2C RQ", 256, (void *) I2C1, 2, NULL);
+    nvic_enable_irq(NVIC_EXTI0_IRQ);
     // Iniciar el planificador de FreeRTOS
     vTaskStartScheduler();
     

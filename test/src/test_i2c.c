@@ -1,5 +1,7 @@
 #include "test_i2c.h"
 
+int sum = 0;
+
 uint8_t htu21d_data[3];
 
 /**
@@ -9,27 +11,51 @@ uint8_t htu21d_data[3];
  * @return void
  */
 
-void life_line_setup(void) {
-    rcc_periph_clock_enable(LIFE_LINE_RCC);
+void test_setup(void) {
+    rcc_periph_clock_enable(TEST_RCC);
+    // Configuro la linea de vida
+    gpio_set_mode(TEST_PORT, GPIO_MODE_OUTPUT_2_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, LIFE_LINE_PIN);
+    gpio_set(TEST_PORT, LIFE_LINE_PIN); // Establece el pin alto
 
-    gpio_set_mode(
-        LIFE_LINE_PORT, 
-        GPIO_MODE_OUTPUT_2_MHZ,
-        GPIO_CNF_OUTPUT_PUSHPULL,
-        LIFE_LINE_PIN
-    );
+    // Configuro el pin de interrupcion para el test de I2C
+    gpio_set_mode(TEST_PORT, GPIO_MODE_INPUT, GPIO_CNF_INPUT_PULL_UPDOWN, TEST_I2C_TRIGGER_PIN);
+    gpio_clear(TEST_PORT, TEST_I2C_TRIGGER_PIN); // Activa la resistencia de pull-down > la raspi activa con un pulso alto
+}
 
-    gpio_set(LIFE_LINE_PORT, LIFE_LINE_PIN); // Establece el pin alto
+void exti_setup(void) {
+    // Habilitar la línea de interrupción EXTI0
+    rcc_periph_clock_enable(RCC_AFIO);
+
+    // Configurar la interrupción para el pin INTERUPT_PIN (PB0)
+    exti_select_source(EXTI0, TEST_PORT);
+    exti_set_trigger(EXTI0, EXTI_TRIGGER_RISING);
+    exti_enable_request(EXTI0);
+}
+
+void exti0_isr(void) {
+    if (exti_get_flag_status(EXTI0)) {
+        // Aquí puedes manejar la comunicación con el sensor o cualquier acción deseada
+        // Por ejemplo, enviar 0xA0 a un Arduino o realizar una acción específica
+        send_test_msg_1();
+        // Limpiar la bandera de interrupción
+        exti_reset_request(EXTI0);
+    };
 }
 
 void vLifeLineTask(void *pvParameters) {
     // No es necesario verificar GPIO en este caso, asumiendo que está configurado correctamente
     for (;;) {
-        gpio_toggle(LIFE_LINE_PORT, LIFE_LINE_PIN); // Alterna el estado del pin
+        gpio_toggle(TEST_PORT, LIFE_LINE_PIN); // Alterna el estado del pin
         vTaskDelay(pdMS_TO_TICKS(LIFE_LINE_DELAY)); // Espera LIFE_LINE_DELAY segundos
     }
 }
 
+void send_test_msg_1(void) {
+    char data[2] = "a";
+    data[0] += sum;
+    print_i2c(data, I2C_ARDUINO_ADDRESS);
+    sum++;
+}
 
 
 /**

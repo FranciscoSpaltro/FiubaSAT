@@ -10,6 +10,11 @@
         "semphr.h": "c",
         "task.h": "c",
         "i2c_test.h": "c",
-        "test_i2c.h": "c"
+        "test_i2c.h": "c",
+        "i2c.h": "c",
+        "htu21d.h": "c",
+        "exti.h": "c",
+        "exti_common_all.h": "c",
+        "exti_common_v1.h": "c"
     }
 }

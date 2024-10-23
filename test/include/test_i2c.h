@@ -11,13 +11,17 @@
 #define I2C_ARDUINO_ADDRESS 0x04 // Dirección del esclavo (Arduino)
 #define TEST_PORT GPIOB
 #define TEST_RCC RCC_GPIOB
-#define LIFE_LINE_PIN GPIO4
 #define TEST_I2C_TRIGGER_PIN GPIO0
-#define LIFE_LINE_DELAY 1000 // 500 ms
+
 #define PERIOD_INTERRUPT 2
 
+#define ECHO_LINE_PIN GPIO4
+#define ECHO_LINE_PORT GPIOB
+#define ECHO_LINE_RCC RCC_GPIOB
+#define ECHO_LINE_DELAY 1000 // 500 ms
+
 void setup_timer(void);
-void life_pin_setup(void);
+void echo_setup(void);
 void vLifeLineTask(void *pvParameters);
 void test_request_i2c(void *pvParameters);
 void print_uart(const char *s);

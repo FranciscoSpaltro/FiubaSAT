@@ -28,6 +28,7 @@ int main(void) {
 
     blink_setup();
     //life_pin_setup();
+    echo_setup();
     exti_setup();
     setup_timer();
     if(UART_setup(USART1, 115200) != pdPASS) return -1;

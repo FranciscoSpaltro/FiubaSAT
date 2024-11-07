@@ -332,7 +332,7 @@ static void DESELECT(void) {
 
 /* SPI transmit a byte */
 static void SPI_TxByte(BYTE data) {
-	spi_send(SPI2,data);
+	spi_xfer(SPI2,data);
 }
 //-------------------------------------------------------------
 
@@ -341,9 +341,8 @@ static uint8_t SPI_RxByte(void) {
 	uint8_t dummy, data;
 	dummy = 0xFF;
 	data = 0;
-
-	spi_send(SPI2,dummy);
-	data = spi_read(SPI2);
+	
+	data = spi_xfer(SPI2, dummy);
 
 	return data;
 }

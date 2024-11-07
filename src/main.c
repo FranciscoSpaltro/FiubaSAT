@@ -16,50 +16,39 @@
 #include <string.h>
 #include <libopencm3/cm3/systick.h>
 #include <libopencm3/cm3/nvic.h>
+#include "fatfs_sd.h"
 
 
 //#define NRF_CODE
 
-
-/**
- * @brief SPI2 Interrupt service routine.
- */
-void spi2_isr(void)
-{   
-    uart_puts("Entre a la interrupcion\r\n");
-    /* Wait for 'Busy' flag to reset. */
-    while ((SPI_SR(SPI2) & SPI_SR_BSY))
-    {
-    }
-    
-    uint8_t indata = spi_read(SPI2);
-    uart_putc(indata);
-    
-    /* Clear 'Read data register not empty' flag. */
-    SPI_SR(SPI2) &= ~SPI_SR_RXNE;
-}
 
 /* Handler en caso de que la aplicación cause un overflow del stack */
 void vApplicationStackOverflowHook(TaskHandle_t xTask __attribute__((unused)), char *pcTaskName __attribute__((unused))) {
 	for (;;);
 }
 
-static void delay(volatile uint32_t count) {
-    while (count--) {
-        __asm__("NOP");
-    }
-}
-
+volatile uint16_t Timer1, Timer2;
+TimerHandle_t xSoftTimer;
 static void uart_setup(void) ;
 void uart_putc(char ch);
 void taskSPI1_transmit(void *pvParameterss);
-void systick_setup();
+void vTimerCallback(TimerHandle_t xTimer);
+void sd_example(void);
 
 // Variables para el modulo NRF
 nrf24 nrfTx;
 uint8_t txAddr[] = { 0xEE, 0xEE, 0xEE, 0xEE, 0xEE };
 
 uint8_t txData[22] = "Hello From STM32";
+
+static void task_sd(void *pvParameters) {
+    uart_puts("Entre a sd_task...\r\n");   
+    for (;;) {
+        sd_example();
+        uart_puts("Estoy en el for de sd_task...\r\n");   
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
 
 /* Main loop donde arranca el programa */
 
@@ -73,8 +62,24 @@ int main(void) {
     // Configuración del LED en PC13
     gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, GPIO13);
     gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, GPIO0);
+
     
+    xSoftTimer = xTimerCreate("SoftTimer", pdMS_TO_TICKS(10), pdTRUE, (void *)0, vTimerCallback);
+    if (xSoftTimer != NULL) {
+        xTimerStart(xSoftTimer, 0);
+    }
+
     uart_setup();       // Configuración de UART
+    uart_puts("Inicio el programa...\r\n");
+
+    xTaskCreate(task_sd, "sd example", 100, NULL, 2, NULL);  // Crear tarea para parpadear el LED
+    xTaskCreate(taskBlink, "LED", 100, NULL, 2, NULL);  // Crear tarea para parpadear el LED
+
+    // Inicia el scheduler de FreeRTOS
+    vTaskStartScheduler();
+
+    for (;;);
+    
 
     #ifdef SPI1_TEST
         if (spi_setup(SPI1, master_mode) != pdTRUE){
@@ -83,18 +88,7 @@ int main(void) {
         }        // Configuración del SPI
         uart_puts("spi1_setup OK\r\n");
     #endif
-
-    
-    if (spi_setup(SPI2, master_mode) != pdTRUE){
-        uart_puts("Error en spi2_setup");
-        return(0);
-    }        // Configuración del SPI
-    //spi_set_dff(SPI2,DATA_SIZE_16);
-    //spi_send_lsb_first(SPI2);
-    uart_puts("spi2_setup OK\r\n");
-    
-    //--------------------------------------- MODULE SETTINGS NRF ----------------------------------------------
-	
+   
     #ifdef NRF_CODE
         
         nrfTx.CE_port = GPIOB;
@@ -147,8 +141,7 @@ int main(void) {
         
         while(1){       	       
 
-                spi_select_slave(SPI2, SLAVE_2);
-                
+                spi_select_slave(SPI2, SLAVE_2);                
                 
                 spi_xfer(SPI2,data);
                 
@@ -166,8 +159,7 @@ int main(void) {
         
             }
     #endif
-
-    //systick_setup();    
+    
   
     return 0;
 }
@@ -196,17 +188,16 @@ static void uart_setup(void) {
     usart_enable(USART1);
 }
 
-
 void uart_putc(char ch) {
     usart_send_blocking(USART1, ch); // Envía un solo carácter por UART
 }
-
+/*
 void uart_puts(const char *str) {
     while (*str) {
         uart_putc(*str); // Envía el carácter actual
         str++;           // Avanza al siguiente carácter en la cadena
     }
-}
+}*/
 
 // Asumiendo que uart_txq y usart_get_flag/usart_send están definidos e inicializados
 
@@ -226,69 +217,8 @@ void usart_Transmit(QueueHandle_t uart_txq) {
     }
 }
 
-
-/*
-
-void spi2_send_data(uint8_t data) {
-    // Activar NSS manualmente (bajar el pin NSS) 
-    gpio_clear(GPIOA, GPIO4);  // Poner NSS en bajo (activo)
-
-    // Enviar el dato por SPI 
-    spi_send(SPI1, data);
-
-    // Esperar hasta que se complete la transmisión 
-    while (!(SPI_SR(SPI1) & SPI_SR_TXE));  // Esperar a que el buffer de transmisión esté vacío
-    while (SPI_SR(SPI1) & SPI_SR_BSY);     // Esperar a que el bus SPI no esté ocupado
-
-    // Desactivar NSS manualmente (subir el pin NSS) 
-    gpio_set(GPIOA, GPIO4);  // Poner NSS en alto (inactivo)
-}
-
-
-
-int main(void) {
-    // Configurar SPI 
-    rcc_periph_clock_enable(RCC_GPIOA);
-    rcc_periph_clock_enable(RCC_GPIOC);
-
-    // Configuración del LED en PC13
-    gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_2_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, GPIO13);
-    spi_setup(SPI1);
-
-    uint8_t txData[22] = "Hello from STM32 \n";
-    uint8_t *ptr = txData;  // Inicializar puntero que recorrerá la cadena
-
-    // Bucle principal 
-    while (1) {
-        // Enviar un dato por SPI 
-        spi_send_data(*ptr++);  // Enviar el carácter actual y avanzar el puntero
-
-        if (*ptr == '\0') {     // Si llega al final de la cadena
-            ptr = txData;       // Reiniciar el puntero al inicio
-            gpio_toggle(GPIOC, GPIO13);  // Alternar el estado del LED
-        }
-
-        // Pequeña espera 
-        for (int i = 0; i < 100000; i++) { __asm__("nop"); }
-    }
-
-    return 0;
-}
-
-*/
-
-void systick_setup(){
-    /*** Configuración del SysTyck ***/
-    // Se toma la velocidad del AHB (SYSCLK) y se activa el divisor por 8:
-    systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8); // 72M/8 = 9M
-
-    // Se carga el valor a cargar cuando el SysTick llega a 0 (downflow):
-    systick_set_reload(8999); // 9M / 9000 = 1k => T = 1ms
+void vTimerCallback(TimerHandle_t xTimer) {
+    if (Timer1 > 0) Timer1--; // Decrementa Timer1
+    if (Timer2 > 0) Timer2--; // Decrementa Timer2        
     
-    // Se habilita la interrupción del SysTick:
-    systick_interrupt_enable();
-    
-    // El SysTick empieza a contar:
-    systick_counter_enable();
-
 }

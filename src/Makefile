@@ -9,6 +9,8 @@ SIZE = arm-none-eabi-size
 INCLUDES = \
 	-I../include \
 	-I../lib/rtos \
+	-I../src/SD_CARD \
+	-I../src/NRF24L01 \
 	-I../lib/libopencm3/include
 
 SOURCES = \
@@ -23,6 +25,7 @@ SOURCES = \
 
 CFLAGS = -std=c99 -Wall -Wextra -Wshadow -Wimplicit-function-declaration -Wredundant-decls \
 	-Wmissing-prototypes -Wstrict-prototypes -fno-common -ffunction-sections -fdata-sections \
+	-Wl,--undefined,_printf_float \
 	-Os -g -mthumb -mcpu=cortex-m3 -msoft-float -mfix-cortex-m3-ldrd -DSTM32F1 -flto $(INCLUDES)
 
 LDFLAGS = -T./stm32f103c8t6.ld -nostartfiles -Wl,--gc-sections -specs=nano.specs -specs=nosys.specs -Wl,--undefined=vTaskSwitchContext

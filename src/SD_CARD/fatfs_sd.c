@@ -10,7 +10,8 @@
 
 //#include "diskio.h"
 #include "fatfs_sd.h"
-
+#include "spi_config.h"
+#include "spi_driver.h"
 /* Private typedef -----------------------------------------------------------*/
 /* Private defines -----------------------------------------------------------*/
 #define TRUE  1
@@ -320,19 +321,19 @@ DRESULT SD_disk_ioctl(BYTE drv, BYTE ctrl, void *buff) {
  
 /* slave select */
 static void SELECT(void) {
-	gpio_clear(SD_CS_GPIO_Port, SD_CS_Pin);
+	spi_select_slave(SPI1, SLAVE_1);
 }
 //-------------------------------------------------------------
 
 /* slave deselect */
 static void DESELECT(void) {
-	gpio_set(SD_CS_GPIO_Port, SD_CS_Pin);
+	spi_deselect_slave(SPI1, SLAVE_1);
 }
 //-------------------------------------------------------------
 
 /* SPI transmit a byte */
 static void SPI_TxByte(BYTE data) {
-	spi_xfer(SPI2,data);
+	spi_transmit(SPI1, &data,1,pdMS_TO_TICKS(100));
 }
 //-------------------------------------------------------------
 
@@ -341,9 +342,8 @@ static uint8_t SPI_RxByte(void) {
 	uint8_t dummy, data;
 	dummy = 0xFF;
 	data = 0;
+	spi_transmit_receive(SPI1,&dummy, &data, 1, pdMS_TO_TICKS(100));
 	
-	data = spi_xfer(SPI2, dummy);
-
 	return data;
 }
 //-------------------------------------------------------------

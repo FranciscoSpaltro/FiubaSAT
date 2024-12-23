@@ -7,6 +7,16 @@
         "nvic.h": "c",
         "semphr.h": "c",
         "rcc.h": "c",
-        "spi_driver.h": "c"
+        "spi_driver.h": "c",
+        "stdio.h": "c",
+        "test.h": "c",
+        "string.h": "c",
+        "usart.h": "c",
+        "ff.h": "c",
+        "diskio.h": "c",
+        "spi_config.h": "c",
+        "fatfs_sd.h": "c",
+        "nrf24l01.h": "c",
+        "sd.h": "c"
     }
 }

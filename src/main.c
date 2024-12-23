@@ -8,7 +8,7 @@
 #include "semphr.h"
 #include "test.h"
 #include "spi_driver.h"
-#include "nrf24l01.h"
+#include "NRF24L01/nrf24l01.h"
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
@@ -16,7 +16,8 @@
 #include <string.h>
 #include <libopencm3/cm3/systick.h>
 #include <libopencm3/cm3/nvic.h>
-#include "fatfs_sd.h"
+#include "SD_CARD/fatfs_sd.h"
+#include "SD_CARD/sd.h"
 
 
 //#define NRF_CODE
@@ -41,12 +42,72 @@ uint8_t txAddr[] = { 0xEE, 0xEE, 0xEE, 0xEE, 0xEE };
 
 uint8_t txData[22] = "Hello From STM32";
 
-static void task_sd(void *pvParameters) {
-    uart_puts("Entre a sd_task...\r\n");   
+static void taskSdWrite(void *pvParameters) {
+    // Simulación de datos de telemetría
+    double latitude = 45.32;
+    double longitude = 122.67;
+    int battery = 70;
+    double temperature = 22.5;
+
+    // Buffer para almacenar el string de telemetría
+    char telemetry_buffer[128];
+
+    // Formatear la línea de telemetría en el buffer
+    sprintf(telemetry_buffer, "[TELEMETRY] COORDS: LAT=%.2f N, LON=%.2f E | BATT=%d%% | TEMP=%.1f°C\r\n",
+            latitude, longitude, battery, temperature);
+
+    // Llamar a la función para escribir en la SD
+    microSD_put("Texto.txt", telemetry_buffer);
+
+    // Eliminar la tarea al finalizar
+    vTaskDelete(NULL);
+}
+
+/*static void taskSpi2(void *pvParameters) {
+    spi_setup(SPI2,master_mode);
+    uint8_t str[] = "Prueba de envio SPI2";
+
+    uint16_t rxData[50] ;
+    //spi_set_dff(SPI2,DATA_SIZE_16);
+    for(;;){        
+        spi_select_slave(SPI2,SLAVE_2);
+        //spi_transmit(SPI2,str,strlen((char *)str),pdMS_TO_TICKS(10));
+        spi_transmit_receive(SPI2,str,rxData,strlen((char *)str),pdMS_TO_TICKS(10));
+        spi_deselect_slave(SPI2,SLAVE_2);
+
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}*/
+static void taskSpi2CRC(void *pvParameters) {
+    spi_setup(SPI2,master_mode);
+    
+    uint8_t str[] = "Prueba de envio SPI2";
+
+    uint16_t rxData[50] ;
+    //spi_set_dff(SPI2,DATA_SIZE_16);
+    for(;;){
+        spi_enable_crc(SPI2);        
+        spi_select_slave(SPI2,SLAVE_2);
+        //spi_transmit(SPI2,str,1,pdMS_TO_TICKS(10));
+        //spi_transmit_receive(SPI2,str,rxData,strlen((char *)str),pdMS_TO_TICKS(10));
+        spi_set_next_tx_from_buffer(SPI2);
+        spi_send(SPI2,0xFF);
+        spi_read(SPI2);
+        spi_set_next_tx_from_crc(SPI2);
+        uint16_t crcValue = SPI_TXCRCR(SPI2);  // Obtener el CRC calculado de la recepción
+        spi_xfer(SPI2,crcValue);
+
+        spi_deselect_slave(SPI2,SLAVE_2);
+
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}
+
+static void taskSdRead(void *pvParameters) {
+    // Lectura del archivo texto.txt
     for (;;) {
-        sd_example();
-        uart_puts("Estoy en el for de sd_task...\r\n");   
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        microSD_get("Texto.txt");
+        vTaskDelay(pdMS_TO_TICKS(5000)) ;      
     }
 }
 
@@ -64,16 +125,25 @@ int main(void) {
     gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL, GPIO0);
 
     
-    xSoftTimer = xTimerCreate("SoftTimer", pdMS_TO_TICKS(10), pdTRUE, (void *)0, vTimerCallback);
+    xSoftTimer = xTimerCreate("SoftTimer", pdMS_TO_TICKS(100), pdTRUE, (void *)0, vTimerCallback);
     if (xSoftTimer != NULL) {
         xTimerStart(xSoftTimer, 0);
     }
 
     uart_setup();       // Configuración de UART
+    spi_setup(SPI1, master_mode); //Configuracion SPI
     uart_puts("Inicio el programa...\r\n");
 
-    xTaskCreate(task_sd, "sd example", 100, NULL, 2, NULL);  // Crear tarea para parpadear el LED
+    /*     Inicializo archivos necesarios para la SD     */
+    //MX_FATFS_Init();
+	//microSD_init();
+	//microSD_getSize();
+
+    //xTaskCreate(taskSdWrite, "SD WRITE", 2000, NULL, 2, NULL);  // Crear tarea para escribir memoria SD
+    //xTaskCreate(taskSdRead, "SD READ", 1000, NULL, 2, NULL);  // Crear tarea para leer memoria SD
     xTaskCreate(taskBlink, "LED", 100, NULL, 2, NULL);  // Crear tarea para parpadear el LED
+    //xTaskCreate(taskSpi2, "SPI2 prueba", 100, NULL, 2, NULL);  // Crear tarea para parpadear el LED
+    xTaskCreate(taskSpi2CRC, "SPI2 prueba", 100, NULL, 2, NULL);  // Crear tarea para parpadear el LED
 
     // Inicia el scheduler de FreeRTOS
     vTaskStartScheduler();
@@ -221,4 +291,11 @@ void vTimerCallback(TimerHandle_t xTimer) {
     if (Timer1 > 0) Timer1--; // Decrementa Timer1
     if (Timer2 > 0) Timer2--; // Decrementa Timer2        
     
+}
+
+void uart_puts(const char *str) {
+    while (*str) {
+        uart_putc(*str); // Envía el carácter actual
+        str++;           // Avanza al siguiente carácter en la cadena
+    }
 }

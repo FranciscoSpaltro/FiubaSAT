@@ -19,7 +19,7 @@
 #include <libopencm3/stm32/spi.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/usart.h>
-#include "spi_config.h"
+#include "../spi_config.h"
 
 /* Exported types ------------------------------------------------------------*/
 //------ POWER GAIN ------//

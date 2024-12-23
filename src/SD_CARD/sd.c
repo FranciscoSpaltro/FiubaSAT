@@ -2,15 +2,8 @@
 #include "fatfs_sd.h"
 #include <string.h>
 #include <stdio.h>
+#include "sd.h"
 
-/*
-SPI_HandleTypeDef hspi1;
-
-UART_HandleTypeDef huart1;
-
-*/
-
-/* USER CODE BEGIN PV */
 FATFS fs;  				// file system
 FIL fil; 					// File
 FILINFO fno;
@@ -32,34 +25,6 @@ void uart_puts(const char *str) {
         str++;           // Avanza al siguiente carácter en la cadena
     }
 }
-static void microSD_init(void);
-static void microSD_getSize(void);
-static void microSD_put(char *name);
-static void microSD_get(char *name);
-
-
-void sd_example(void){
-  
-  MX_FATFS_Init();
-  uart_puts("MX_FATFS_Init...\r\n");   
-  /* USER CODE BEGIN 2 */
-	microSD_init();
-    uart_puts("microSD_init...\r\n");    
-	microSD_getSize();
-    uart_puts("microSD_getSizet...\r\n"); 
-	microSD_put("prueba1.txt");
-	microSD_get("prueba1.txt");
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-	while (1) {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-	}
-  /* USER CODE END 3 */
-}
 
 
 /* USER CODE BEGIN 4 */
@@ -78,22 +43,22 @@ static void send_uart(char *string) {
 //------------------------------------------------------------
 
 //Montamos el sistema de archivos
-static void microSD_init(void) {
+extern void microSD_init(void) {
 	fresult = f_mount(&fs, "/", 1);
 	if (fresult != FR_OK)
-		uart_puts("ERROR!!! montaje tarjeta microSD fallido...\n");
+		uart_puts("ERROR!!! montaje tarjeta microSD fallido...\r\n");
 	else
-		uart_puts("microSD CARD montada con exito\n");
+		uart_puts("microSD CARD montada con exito\r\n");
 }
 //------------------------------------------------------------
 
 //leemos la capacidad y el espacio libre
-static void microSD_getSize(void) {
+extern void microSD_getSize(void) {
 	f_getfree("", &fre_clust, &pfs);	//check free space
 
 	//get microSD size in KB
 	uint32_t total = (uint32_t) ((pfs->n_fatent - 2) * pfs->csize * 0.5);
-	sprintf(buffer, "SD CARD Total Size: \t%luKB\n", total);
+	sprintf(buffer, "SD CARD Total Size: \t%luKB\r\n", total);
 	uart_puts(buffer);
 	uint16_t len = strlen(buffer);
 	bufclear(buffer, len);
@@ -101,7 +66,7 @@ static void microSD_getSize(void) {
 	//get free space in KB
 	uint32_t freeSpace;
 	freeSpace = (uint32_t) (fre_clust * pfs->csize * 0.5);
-	sprintf(buffer, "SD CARD Free Space: \t%luKB\n\n", freeSpace);
+	sprintf(buffer, "SD CARD Free Space: \t%luKB\r\n", freeSpace);
 	uart_puts(buffer);
 	len = strlen(buffer);
 	bufclear(buffer, len);
@@ -109,18 +74,19 @@ static void microSD_getSize(void) {
 //------------------------------------------------------------
 
 //guardamos informacion con PUTS
-static void microSD_put(char *name) {
+extern void microSD_put(char *name, char *string) {
 	//Open file to write/ create a file if it doesn't exist
 	fresult = f_open(&fil, name, FA_OPEN_ALWAYS | FA_READ | FA_WRITE);
+	if (fresult == FR_INVALID_OBJECT) uart_puts("Retorno FR_INVALID_OBJECT\r\n");
 
 	//Write data
-	f_puts("Prueba PUTS, suscribete Prro!\n", &fil);
-
+	f_puts(string, &fil);
+	
 	//Close file
 	fresult = f_close(&fil);
 
 	if (fresult == FR_OK) {
-		sprintf(buffer, "%s%s", name, " creado y los datos fueron escritos\n");
+		sprintf(buffer, "%s%s", name, " creado y los datos fueron escritos\r\n");
 		uart_puts(buffer);
 	}
 
@@ -130,7 +96,7 @@ static void microSD_put(char *name) {
 //------------------------------------------------------------
 
 //guardamos informacion con PUTS
-static void microSD_get(char *name) {
+extern void microSD_get(char *name) {
 	//Open file to read
 	fresult = f_open(&fil, name, FA_READ);
 
@@ -140,10 +106,10 @@ static void microSD_get(char *name) {
 
 		char msg[50];
 		sprintf(msg, "%s%s", name,
-				" Fue abierto y contiene los siguientes datos:\n");
+				" Fue abierto y contiene los siguientes datos:\r\n");
 		uart_puts(msg);
 		uart_puts(buffer);
-		send_uart("\n");
+		send_uart("\r\n");
 
 		/* Close file */
 		f_close(&fil);
@@ -164,6 +130,7 @@ void Error_Handler(void)
 	/* User can add his own implementation to report the HAL error return state */
 	__disable_irq();
 	while (1) {
+		uart_puts("Error_Handler...\r\n");
 	}
   /* USER CODE END Error_Handler_Debug */
 }
@@ -180,7 +147,7 @@ void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+     ex: printf("Wrong parameters value: file %s on line %d\r\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

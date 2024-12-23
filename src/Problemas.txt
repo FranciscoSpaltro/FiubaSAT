@@ -1,0 +1,3 @@
+-En otras tarjetas hay que ver la version de la libreria.
+-Hay que tener cuidado con la velocidad del spi y con el tamaño de memoria que se le pone a las funciones, si es poca la funcion de escritura no anda
+-Probar transmit receive y chequear para todos las funciones la logica de 8 o 16 bitss

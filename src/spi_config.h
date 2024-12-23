@@ -48,8 +48,8 @@ typedef struct {
  * La lista termina con el valor SLAVE_END.
  */
 static const slave_t spi1_slaves[] = {
-    {SLAVE_1, GPIOA, GPIO3},  /**< SLAVE_1 conectado al puerto GPIOA, pin 3. */
-    {SLAVE_2, GPIOA, GPIO4},  /**< SLAVE_2 conectado al puerto GPIOA, pin 4. */
+    {SLAVE_1, GPIOA, GPIO4},  /**< SLAVE_1 conectado al puerto GPIOA, pin 3. */
+    //{SLAVE_2, GPIOA, GPIO4},  /**< SLAVE_2 conectado al puerto GPIOA, pin 4. */
     SLAVE_END                 /**< Final de la lista de slaves. */
 };
 

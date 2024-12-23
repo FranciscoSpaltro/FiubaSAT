@@ -51,7 +51,7 @@ void spi_set_dff(uint32_t spi_id, uint8_t data_size);
  * @param SPI_id Identificador del bus SPI (SPIx).
  * @param data Puntero al bloque de datos a transmitir.
  * @param size Tamaño del bloque de datos.
- * @param xTicksToWait Tiempo en ticks que la tarea esperará en caso de timeout.
+ * @param xTicksToWait Tiempo en ticks que la tarea esperará antes de que ocurra un timeout durante la operación.
  */
 void spi_transmit(uint32_t SPI_id, uint8_t *data, uint16_t size, TickType_t xTicksToWait);
 
@@ -61,9 +61,26 @@ void spi_transmit(uint32_t SPI_id, uint8_t *data, uint16_t size, TickType_t xTic
  * @param SPI_id Identificador del bus SPI (SPIx).
  * @param data Puntero al buffer donde se almacenarán los datos recibidos.
  * @param size Tamaño del bloque de datos a recibir.
- * @param xTicksToWait Tiempo en ticks que la tarea esperará si la cola está vacía.
+ * @param xTicksToWait Tiempo en ticks que la tarea esperará antes de que ocurra un timeout durante la operación.
  */
 void spi_receive(uint32_t spi_id, uint16_t *data, uint16_t size, TickType_t xTicksToWait);
+
+/**
+ * @brief Transmite y recibe un bloque de datos por SPI de forma bloqueante.
+ * 
+ * Esta función realiza una transmisión y recepción simultánea de datos a través del bus SPI. 
+ * Los datos a transmitir se proporcionan a través de un puntero, mientras que los datos recibidos se almacenan en otro.
+ * La operación se realiza de manera bloqueante hasta que se complete la transmisión y recepción de todo el bloque de datos o se alcance el tiempo de espera configurado.
+ * 
+ * @param SPI_id Identificador del bus SPI (SPIx), donde `x` representa el número del bus SPI (por ejemplo, SPI1, SPI2, etc.).
+ * @param txdata Puntero al bloque de datos a transmitir. Debe contener `size` bytes de datos.
+ * @param rxdata Puntero al buffer donde se almacenarán los datos recibidos. Este buffer debe ser lo suficientemente grande para almacenar los datos de tamaño `size`.
+ * @param size Tamaño del bloque de datos a transmitir y recibir, en bytes.
+ * @param xTicksToWait Tiempo en ticks que la tarea esperará antes de que ocurra un timeout durante la operación.
+ */
+
+void spi_transmit_receive(uint32_t SPI_id, uint8_t *txdata, uint16_t *rxdata, uint16_t size, TickType_t xTicksToWait);
+
 
 /**
  * @brief Selecciona el esclavo en el bus SPI, activando su pin CS.

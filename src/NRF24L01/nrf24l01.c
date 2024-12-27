@@ -14,7 +14,7 @@ RECORDATORIO: ver que hacer con nrf24_CE_setup
 /* Includes ------------------------------------------------------------------*/
 #include "nrf24l01.h"
 #include <string.h>
-#include "spi_driver.h"
+#include "../spi_driver.h"
 /* Private typedef -----------------------------------------------------------*/
 /* Private defines -----------------------------------------------------------*/
 #define DUMMY 0xff

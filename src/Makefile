@@ -9,12 +9,12 @@ SIZE = arm-none-eabi-size
 INCLUDES = \
 	-I../include \
 	-I../lib/rtos \
-	-I../src/SD_CARD \
-	-I../src/NRF24L01 \
 	-I../lib/libopencm3/include
 
 SOURCES = \
 	$(wildcard ../src/*.c) \
+	$(wildcard ../src/NRF24L01/*.c) \
+	$(wildcard ../src/SD_CARD/*.c) \
 	../lib/rtos/heap_4.c \
 	../lib/rtos/list.c \
 	../lib/rtos/port.c \

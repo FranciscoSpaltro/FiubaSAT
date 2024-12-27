@@ -62,7 +62,7 @@ static const slave_t spi1_slaves[] = {
  * La lista termina con el valor SLAVE_END.
  */
 static const slave_t spi2_slaves[] = {
-    {SLAVE_2, GPIOB, GPIO12},  /**< SLAVE_2 conectado al puerto GPIOB, pin 12. */
+    {SLAVE_1, GPIOB, GPIO12},  /**< SLAVE_1 conectado al puerto GPIOB, pin 12. */
     SLAVE_END                  /**< Final de la lista de slaves. */
 };
 

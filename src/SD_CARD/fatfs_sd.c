@@ -10,8 +10,10 @@
 
 //#include "diskio.h"
 #include "fatfs_sd.h"
-#include "spi_config.h"
-#include "spi_driver.h"
+#include "../spi_config.h"
+#include "../spi_driver.h"
+#include "sd.h"
+
 /* Private typedef -----------------------------------------------------------*/
 /* Private defines -----------------------------------------------------------*/
 #define TRUE  1
@@ -29,8 +31,8 @@ static uint8_t CardType; /* b0:MMC, b1:SDC, b2:Block addressing */
 static uint8_t PowerFlag = 0; /* indicates if "power" is on */
 
 /* Private function prototypes -----------------------------------------------*/
-static void SELECT(void);
-static void DESELECT(void);
+static BaseType_t SELECT(void);
+static BaseType_t DESELECT(void);
 static void SPI_TxByte(BYTE data);
 static uint8_t SPI_RxByte(void);
 static void SPI_RxBytePtr(uint8_t *buff);
@@ -60,7 +62,11 @@ DSTATUS SD_disk_initialize(BYTE drv) {
 	SD_PowerOn();
 
 	/* slave select */
-	SELECT();
+
+	while(SELECT() == pdFALSE){
+		//Realizar manejo de ERRORES
+		uart_puts("No se pudo seleccionar el slave");
+	}		
 
 	/* check disk type */
 	type = 0;
@@ -143,7 +149,10 @@ DRESULT SD_disk_read(BYTE pdrv, BYTE *buff, DWORD sector, UINT count) {
 	/* convert to byte address */
 	if (!(CardType & 4)) sector *= 512;
 
-	SELECT();
+	while(SELECT() == pdFALSE){
+	//Realizar manejo de ERRORES
+	uart_puts("No se pudo seleccionar el slave");
+	}	
 
 	if (count == 1) {
 		/* READ_SINGLE_BLOCK */
@@ -184,7 +193,10 @@ DRESULT SD_disk_write(BYTE pdrv, const BYTE *buff, DWORD sector, UINT count) {
 	/* convert to byte address */
 	if (!(CardType & 4)) sector *= 512;
 
-	SELECT();
+	while(SELECT() == pdFALSE){
+		//Realizar manejo de ERRORES
+		uart_puts("No se pudo seleccionar el slave");
+	}	
 
 	if (count == 1) {
 		/* WRITE_BLOCK */
@@ -250,7 +262,10 @@ DRESULT SD_disk_ioctl(BYTE drv, BYTE ctrl, void *buff) {
 		/* no disk */
 		if (Stat & STA_NOINIT) return RES_NOTRDY;
 
-		SELECT();
+		while(SELECT() == pdFALSE){
+			//Realizar manejo de ERRORES
+			uart_puts("No se pudo seleccionar el slave");
+		}	
 
 		switch (ctrl) {
 			case GET_SECTOR_COUNT:
@@ -320,20 +335,20 @@ DRESULT SD_disk_ioctl(BYTE drv, BYTE ctrl, void *buff) {
  ---------------------------------------------------------------------------*/
  
 /* slave select */
-static void SELECT(void) {
-	spi_select_slave(SPI1, SLAVE_1);
+static BaseType_t SELECT(void) {
+	return spi_select_slave(SPI2, SLAVE_1);
 }
 //-------------------------------------------------------------
 
 /* slave deselect */
-static void DESELECT(void) {
-	spi_deselect_slave(SPI1, SLAVE_1);
+static BaseType_t DESELECT(void) {
+	return spi_deselect_slave(SPI2, SLAVE_1);
 }
 //-------------------------------------------------------------
 
 /* SPI transmit a byte */
 static void SPI_TxByte(BYTE data) {
-	spi_transmit(SPI1, &data,1,pdMS_TO_TICKS(100));
+	spi_transmit(SPI2, &data,1,pdMS_TO_TICKS(100));
 }
 //-------------------------------------------------------------
 
@@ -342,7 +357,7 @@ static uint8_t SPI_RxByte(void) {
 	uint8_t dummy, data;
 	dummy = 0xFF;
 	data = 0;
-	spi_transmit_receive(SPI1,&dummy, &data, 1, pdMS_TO_TICKS(100));
+	spi_transmit_receive(SPI2,&dummy, &data, 1, pdMS_TO_TICKS(100));
 	
 	return data;
 }
@@ -386,7 +401,10 @@ static void SD_PowerOn(void) {
 		SPI_TxByte(0xFF);
 
 	/* slave select */
-	SELECT();
+	while(SELECT() == pdFALSE){
+			//Realizar manejo de ERRORES
+			uart_puts("No se pudo seleccionar el slave");
+	}	
 
 	/* make idle state */
 	cmd_arg[0] = (CMD0 | 0x40);
